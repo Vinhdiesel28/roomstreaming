@@ -67,17 +67,49 @@ export function RoomScreen({
   const [error, setError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
   const chatEndRef = useRef<HTMLDivElement>(null);
-  const similarRequestRef = useRef(0);
 
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest" });
   }, [messages]);
 
   useEffect(() => {
-    similarRequestRef.current += 1;
+    let cancelled = false;
+    const videoId = snapshot.currentVideo?.videoId;
+
     setSimilarResults([]);
     setSimilarError(null);
-    setSimilarBusy(false);
+    setSimilarBusy(Boolean(videoId));
+    setAddedVideoId(null);
+
+    if (!videoId) {
+      return () => {
+        cancelled = true;
+      };
+    }
+
+    const loadSimilarVideos = async () => {
+      try {
+        const [items] = await Promise.all([
+          getSimilarYouTubeVideos(videoId),
+          new Promise((resolve) => window.setTimeout(resolve, 300)),
+        ]);
+        if (cancelled) return;
+        setSimilarResults(items);
+        if (items.length === 0) {
+          setSimilarError("Chưa tìm thấy video tương tự có thể phát trong phòng.");
+        }
+      } catch (cause) {
+        if (cancelled) return;
+        setSimilarError(cause instanceof Error ? cause.message : "Không lấy được gợi ý video.");
+      } finally {
+        if (!cancelled) setSimilarBusy(false);
+      }
+    };
+
+    void loadSimilarVideos();
+    return () => {
+      cancelled = true;
+    };
   }, [snapshot.currentVideo?.videoId]);
 
   const addVideo = async (event: FormEvent) => {
@@ -142,32 +174,6 @@ export function RoomScreen({
       setSearchError(cause instanceof Error ? cause.message : "Không thể thêm video.");
     } finally {
       setAddingVideoId(null);
-    }
-  };
-
-  const findSimilarVideos = async () => {
-    const videoId = snapshot.currentVideo?.videoId;
-    if (!videoId) return;
-    const requestId = ++similarRequestRef.current;
-    setSimilarBusy(true);
-    setSimilarError(null);
-    setSimilarResults([]);
-    setAddedVideoId(null);
-    try {
-      const [items] = await Promise.all([
-        getSimilarYouTubeVideos(videoId),
-        new Promise((resolve) => window.setTimeout(resolve, 300)),
-      ]);
-      if (similarRequestRef.current !== requestId) return;
-      setSimilarResults(items);
-      if (items.length === 0) {
-        setSimilarError("Chưa tìm thấy video tương tự có thể phát trong phòng.");
-      }
-    } catch (cause) {
-      if (similarRequestRef.current !== requestId) return;
-      setSimilarError(cause instanceof Error ? cause.message : "Không lấy được gợi ý video.");
-    } finally {
-      if (similarRequestRef.current === requestId) setSimilarBusy(false);
     }
   };
 
@@ -365,25 +371,13 @@ export function RoomScreen({
             </span>
             <p>{snapshot.isHost ? "Dùng player YouTube để phát, dừng hoặc tua." : "Thao tác cục bộ sẽ tự bắt nhịp lại với Host."}</p>
           </div>
-          <div className="video-meta__actions">
-            {snapshot.currentVideo && (
-              <button
-                className="btn btn--soft btn--small"
-                type="button"
-                onClick={() => void findSimilarVideos()}
-                disabled={similarBusy}
-                data-state={similarBusy ? "loading" : undefined}
-              >
-                {similarBusy ? <LoaderCircle className="spin" size={17} /> : <ListVideo size={17} />}
-                {similarBusy ? "Đang tìm gợi ý" : "Video tương tự"}
-              </button>
-            )}
-            {snapshot.isHost && snapshot.currentVideo && (
+          {snapshot.isHost && snapshot.currentVideo && (
+            <div className="video-meta__actions">
               <button className="btn btn--soft btn--small" type="button" onClick={() => void onCommand("NEXT", 0)}>
                 <SkipForward size={17} /> Video tiếp
               </button>
-            )}
-          </div>
+            </div>
+          )}
         </div>
 
         <section className="chat-panel">

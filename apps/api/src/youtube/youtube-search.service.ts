@@ -25,6 +25,7 @@ interface YouTubeVideoResponse {
       title?: string;
       channelTitle?: string;
       categoryId?: string;
+      tags?: string[];
     };
   }>;
   error?: { message?: string };
@@ -32,7 +33,7 @@ interface YouTubeVideoResponse {
 
 const VIDEO_ID_PATTERN = /^[A-Za-z0-9_-]{11}$/;
 const CACHE_TTL_MS = 5 * 60 * 1000;
-const SIMILAR_CACHE_TTL_MS = 30 * 60 * 1000;
+const SIMILAR_CACHE_TTL_MS = 6 * 60 * 60 * 1000;
 const MAX_CACHE_ENTRIES = 100;
 
 @Injectable()
@@ -45,6 +46,7 @@ export class YouTubeSearchService {
     string,
     { expiresAt: number; items: YouTubeSearchResult[] }
   >();
+  private readonly similarPending = new Map<string, Promise<YouTubeSearchResult[]>>();
 
   async search(input: string): Promise<YouTubeSearchResult[]> {
     const query = input.trim().replace(/\s+/g, " ");
@@ -76,6 +78,19 @@ export class YouTubeSearchService {
     const cached = this.similarCache.get(videoId);
     if (cached && cached.expiresAt > Date.now()) return cached.items;
 
+    const pending = this.similarPending.get(videoId);
+    if (pending) return pending;
+
+    const request = this.loadSimilar(videoId).finally(() => {
+      if (this.similarPending.get(videoId) === request) {
+        this.similarPending.delete(videoId);
+      }
+    });
+    this.similarPending.set(videoId, request);
+    return request;
+  }
+
+  private async loadSimilar(videoId: string): Promise<YouTubeSearchResult[]> {
     const videoParams = new URLSearchParams({
       part: "snippet",
       id: videoId,
@@ -90,14 +105,15 @@ export class YouTubeSearchService {
       videoEmbeddable: "true",
       videoSyndicated: "true",
       safeSearch: "moderate",
-      maxResults: "12",
+      maxResults: "24",
       relevanceLanguage: "vi",
-      q: buildSimilarQuery(source.title),
+      q: buildSimilarQuery(source.title, source.tags),
     });
     if (source.categoryId) searchParams.set("videoCategoryId", source.categoryId);
 
     const searchPayload = await this.request<YouTubeSearchResponse>("search", searchParams);
-    const items = mapSearchItems(searchPayload.items, new Set([videoId])).slice(0, 6);
+    const candidates = mapSearchItems(searchPayload.items, new Set([videoId]));
+    const items = diversifyResults(candidates, source.title, 8);
 
     trimCache(this.similarCache);
     this.similarCache.set(videoId, {
@@ -167,13 +183,83 @@ function mapSearchItems(
   });
 }
 
-function buildSimilarQuery(title: string) {
-  const cleaned = decodeHtml(title)
+function buildSimilarQuery(title: string, tags: string[] = []) {
+  const cleanedTitle = cleanRecommendationText(decodeHtml(title));
+  const normalizedTitle = normalizeRecommendationText(cleanedTitle);
+  const usefulTags = Array.from(new Set(
+    tags
+      .map((tag) => cleanRecommendationText(decodeHtml(tag)))
+      .filter((tag) => tag.length >= 3 && tag.length <= 32)
+      .filter((tag) => !normalizedTitle.includes(normalizeRecommendationText(tag)))
+      .filter((tag) => !/^(music|video|official|youtube)$/i.test(tag)),
+  )).slice(0, 3);
+  const query = [...usefulTags, cleanedTitle].filter(Boolean).join("|");
+  return (query || decodeHtml(title)).slice(0, 100);
+}
+
+function cleanRecommendationText(value: string) {
+  return value
     .replace(/[\[(](official (video|audio)|lyrics?|mv|4k)[\])]/gi, " ")
     .replace(/\b(official video|official audio|lyrics?|mv|4k)\b/gi, " ")
     .replace(/\s+/g, " ")
     .trim();
-  return (cleaned || decodeHtml(title)).slice(0, 100);
+}
+
+function diversifyResults(
+  candidates: YouTubeSearchResult[],
+  sourceTitle: string,
+  limit: number,
+) {
+  const sourceTokens = recommendationTokens(sourceTitle);
+  const filtered = candidates.filter((item) => {
+    const candidateTokens = recommendationTokens(item.title);
+    if (candidateTokens.size === 0) return true;
+    const overlap = [...candidateTokens].filter((token) => sourceTokens.has(token)).length;
+    const similarity = overlap / Math.max(1, Math.min(sourceTokens.size, candidateTokens.size));
+    return similarity < 0.9;
+  });
+  const pool = filtered.length > 0 ? filtered : candidates;
+  const channels = new Map<string, YouTubeSearchResult[]>();
+  for (const item of pool) {
+    const key = normalizeRecommendationText(item.channelTitle) || item.channelTitle;
+    const bucket = channels.get(key) ?? [];
+    bucket.push(item);
+    channels.set(key, bucket);
+  }
+
+  const diversified: YouTubeSearchResult[] = [];
+  for (let round = 0; diversified.length < limit; round += 1) {
+    let added = false;
+    for (const bucket of channels.values()) {
+      const item = bucket[round];
+      if (!item) continue;
+      diversified.push(item);
+      added = true;
+      if (diversified.length === limit) break;
+    }
+    if (!added) break;
+  }
+  return diversified;
+}
+
+function recommendationTokens(value: string) {
+  const ignored = new Set(["official", "video", "audio", "lyrics", "lyric", "mv", "4k", "hd"]);
+  return new Set(
+    normalizeRecommendationText(cleanRecommendationText(decodeHtml(value)))
+      .split(" ")
+      .filter((token) => token.length >= 2 && !ignored.has(token)),
+  );
+}
+
+function normalizeRecommendationText(value: string) {
+  return value
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLocaleLowerCase("vi-VN")
+    .replace(/đ/g, "d")
+    .replace(/[^a-z0-9]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
 }
 
 function trimCache(cache: Map<string, unknown>) {

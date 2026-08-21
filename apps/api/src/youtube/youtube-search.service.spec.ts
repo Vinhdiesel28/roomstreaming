@@ -62,6 +62,7 @@ describe("YouTubeSearchService", () => {
               title: "Một bài hát (Official Video)",
               channelTitle: "Ca sĩ",
               categoryId: "10",
+              tags: ["nhạc chill", "acoustic", "official"],
             },
           }],
         }),
@@ -101,8 +102,11 @@ describe("YouTubeSearchService", () => {
     vi.stubGlobal("fetch", fetchMock);
 
     const service = new YouTubeSearchService();
-    const first = await service.similar("dQw4w9WgXcQ");
-    const second = await service.similar("dQw4w9WgXcQ");
+    const [first, simultaneous] = await Promise.all([
+      service.similar("dQw4w9WgXcQ"),
+      service.similar("dQw4w9WgXcQ"),
+    ]);
+    const cached = await service.similar("dQw4w9WgXcQ");
 
     expect(first).toEqual([{
       videoId: "aaaaaaaaaaa",
@@ -110,11 +114,58 @@ describe("YouTubeSearchService", () => {
       channelTitle: "Ca sĩ khác",
       thumbnailUrl: "https://i.ytimg.com/next.jpg",
     }]);
-    expect(second).toEqual(first);
+    expect(simultaneous).toEqual(first);
+    expect(cached).toEqual(first);
     expect(fetchMock).toHaveBeenCalledTimes(2);
     expect(String(fetchMock.mock.calls[0]?.[0])).toContain("/videos?");
     expect(String(fetchMock.mock.calls[1]?.[0])).toContain("videoSyndicated=true");
     expect(String(fetchMock.mock.calls[1]?.[0])).toContain("videoCategoryId=10");
+    expect(String(fetchMock.mock.calls[1]?.[0])).toContain("maxResults=24");
+    expect(String(fetchMock.mock.calls[1]?.[0])).toContain("nh%E1%BA%A1c+chill%7Cacoustic%7C");
     expect(String(fetchMock.mock.calls[1]?.[0])).not.toContain("Official+Video");
+  });
+
+  it("drops near-duplicate titles and rotates results across channels", async () => {
+    process.env.YOUTUBE_API_KEY = "test-key";
+    const result = (videoId: string, title: string, channelTitle: string) => ({
+      id: { videoId },
+      snippet: {
+        title,
+        channelTitle,
+        thumbnails: { medium: { url: `https://i.ytimg.com/${videoId}.jpg` } },
+      },
+    });
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: async () => ({
+          items: [{ snippet: { title: "Một bài hát (Official Video)", categoryId: "10" } }],
+        }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: async () => ({
+          items: [
+            result("aaaaaaaaaaa", "Một bài hát lyrics", "Kênh A"),
+            result("bbbbbbbbbbb", "Acoustic cho buổi tối", "Kênh A"),
+            result("ccccccccccc", "Nhạc chill ngày mưa", "Kênh A"),
+            result("ddddddddddd", "Playlist thư giãn cuối tuần", "Kênh B"),
+            result("eeeeeeeeeee", "Live session trong quán nhỏ", "Kênh C"),
+          ],
+        }),
+      });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const items = await new YouTubeSearchService().similar("dQw4w9WgXcQ");
+
+    expect(items.map((item) => item.videoId)).toEqual([
+      "bbbbbbbbbbb",
+      "ddddddddddd",
+      "eeeeeeeeeee",
+      "ccccccccccc",
+    ]);
+    expect(items.map((item) => item.videoId)).not.toContain("aaaaaaaaaaa");
   });
 });

@@ -59,7 +59,7 @@ describe("RoomScreen layout", () => {
     expect(html).toContain('id="youtube-search"');
   });
 
-  it("offers similar videos manually when a video is playing", () => {
+  it("does not require a manual suggestion trigger when a video is playing", () => {
     const html = renderToStaticMarkup(
       <RoomScreen
         snapshot={{
@@ -84,7 +84,7 @@ describe("RoomScreen layout", () => {
       />,
     );
 
-    expect(html).toContain("Video tương tự");
+    expect(html).not.toContain("Video tương tự");
     expect(html).not.toContain('id="similar-title"');
   });
 });
