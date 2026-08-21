@@ -597,6 +597,7 @@ input[aria-invalid="true"] {
   grid-template-areas:
     "picker"
     "video"
+    "meta"
     "chat"
     "voice"
     "queue"
@@ -611,6 +612,10 @@ input[aria-invalid="true"] {
 .video-stage {
   grid-area: video;
   min-width: 0;
+}
+
+.video-meta {
+  grid-area: meta;
 }
 
 .queue-panel {
@@ -721,7 +726,7 @@ input[aria-invalid="true"] {
   display: flex;
   flex-direction: column;
   gap: var(--space-sm);
-  padding: var(--space-md) var(--space-xs) 0;
+  padding-inline: var(--space-xs);
 }
 
 .role-line {
@@ -1468,6 +1473,7 @@ input[aria-invalid="true"] {
     grid-template-areas:
       "picker picker"
       "video video"
+      "meta meta"
       "chat chat"
       "voice voice"
       "queue members";
@@ -1497,6 +1503,7 @@ input[aria-invalid="true"] {
     grid-template-areas:
       "picker picker"
       "video chat"
+      "meta ."
       "voice voice"
       "queue members";
     align-items: stretch;
@@ -1527,6 +1534,7 @@ input[aria-invalid="true"] {
     grid-template-areas:
       "picker picker"
       "video chat"
+      "meta ."
       "voice voice"
       "queue members";
   }

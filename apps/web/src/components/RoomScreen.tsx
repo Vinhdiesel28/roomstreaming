@@ -299,28 +299,29 @@ export function RoomScreen({
 
         <section className="video-stage">
           <YouTubePlayer playback={snapshot.currentVideo} isHost={snapshot.isHost} onCommand={onCommand} />
-          <div className="video-meta">
-            <div>
-              <span className="role-line">
-                {snapshot.isHost ? <><Crown size={16} /> Bạn là Host</> : <><UserRound size={16} /> Host đang giữ nhịp</>}
-              </span>
-              <p>{snapshot.isHost ? "Dùng player YouTube để phát, dừng hoặc tua." : "Thao tác cục bộ sẽ tự bắt nhịp lại với Host."}</p>
-            </div>
-            {snapshot.isHost && snapshot.currentVideo && (
-              <button className="btn btn--soft btn--small" type="button" onClick={() => void onCommand("NEXT", 0)}>
-                <SkipForward size={17} /> Video tiếp
-              </button>
-            )}
-          </div>
         </section>
+
+        <div className="video-meta">
+          <div>
+            <span className="role-line">
+              {snapshot.isHost ? <><Crown size={16} /> Bạn là Host</> : <><UserRound size={16} /> Host đang giữ nhịp</>}
+            </span>
+            <p>{snapshot.isHost ? "Dùng player YouTube để phát, dừng hoặc tua." : "Thao tác cục bộ sẽ tự bắt nhịp lại với Host."}</p>
+          </div>
+          {snapshot.isHost && snapshot.currentVideo && (
+            <button className="btn btn--soft btn--small" type="button" onClick={() => void onCommand("NEXT", 0)}>
+              <SkipForward size={17} /> Video tiếp
+            </button>
+          )}
+        </div>
 
         <section className="chat-panel">
           <div className="panel-heading panel-heading--compact">
-            <div><h2>Trò chuyện</h2><p><MessageCircle size={15} /> Không lưu lịch sử</p></div>
+            <div><h2>Trò chuyện</h2></div>
           </div>
           <div className="chat-log" aria-live="polite">
             {messages.length === 0 ? (
-              <div className="chat-empty"><MessageCircle size={22} /><p>Tin nhắn chỉ tồn tại trong phiên này.</p></div>
+              <div className="chat-empty"><MessageCircle size={22} /><p>nói chi bây giờ , ù húuuu</p></div>
             ) : messages.map((message) => (
               <article className={`chat-message ${message.senderSessionId === sessionId ? "is-mine" : ""}`} key={message.id}>
                 <div><strong>{message.senderName}</strong><time dateTime={new Date(message.sentAt).toISOString()}>{new Date(message.sentAt).toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit" })}</time></div>

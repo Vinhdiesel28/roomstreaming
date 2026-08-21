@@ -43,6 +43,7 @@ describe("RoomScreen layout", () => {
 
     const picker = html.indexOf('class="video-picker"');
     const video = html.indexOf('class="video-stage"');
+    const meta = html.indexOf('class="video-meta"');
     const chat = html.indexOf('class="chat-panel"');
     const voice = html.indexOf('class="voice-card"');
     const queue = html.indexOf('class="queue-panel"');
@@ -50,11 +51,11 @@ describe("RoomScreen layout", () => {
 
     expect(picker).toBeGreaterThan(-1);
     expect(picker).toBeLessThan(video);
-    expect(video).toBeLessThan(chat);
+    expect(video).toBeLessThan(meta);
+    expect(meta).toBeLessThan(chat);
     expect(chat).toBeLessThan(voice);
     expect(voice).toBeLessThan(queue);
     expect(queue).toBeLessThan(members);
-    expect(html).toContain("Không lưu lịch sử");
     expect(html).toContain('id="youtube-search"');
   });
 });
