@@ -58,4 +58,33 @@ describe("RoomScreen layout", () => {
     expect(queue).toBeLessThan(members);
     expect(html).toContain('id="youtube-search"');
   });
+
+  it("offers similar videos manually when a video is playing", () => {
+    const html = renderToStaticMarkup(
+      <RoomScreen
+        snapshot={{
+          ...snapshot,
+          currentVideo: {
+            videoId: "dQw4w9WgXcQ",
+            state: "paused",
+            positionSec: 0,
+            changedAt: 1,
+            version: 1,
+          },
+        }}
+        sessionId="session-1"
+        messages={[]}
+        connected
+        socket={null}
+        onLeave={vi.fn(async () => undefined)}
+        onAddVideo={vi.fn(async () => undefined)}
+        onRemoveVideo={vi.fn(async () => undefined)}
+        onCommand={vi.fn(async () => undefined)}
+        onSendChat={vi.fn(async () => undefined)}
+      />,
+    );
+
+    expect(html).toContain("Video tương tự");
+    expect(html).not.toContain('id="similar-title"');
+  });
 });

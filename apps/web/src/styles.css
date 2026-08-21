@@ -599,6 +599,7 @@ input[aria-invalid="true"] {
     "video"
     "meta"
     "chat"
+    "similar"
     "voice"
     "queue"
     "members";
@@ -628,6 +629,10 @@ input[aria-invalid="true"] {
 
 .chat-panel {
   grid-area: chat;
+}
+
+.similar-panel {
+  grid-area: similar;
 }
 
 .voice-card {
@@ -742,7 +747,15 @@ input[aria-invalid="true"] {
   font-size: var(--text-sm);
 }
 
+.video-meta__actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-xs);
+}
+
 .video-picker,
+.similar-panel,
 .queue-panel,
 .members-panel,
 .chat-panel {
@@ -754,6 +767,10 @@ input[aria-invalid="true"] {
 }
 
 .video-picker {
+  background: var(--color-paper-2);
+}
+
+.similar-panel {
   background: var(--color-paper-2);
 }
 
@@ -886,6 +903,16 @@ input[aria-invalid="true"] {
   display: flex;
   flex-direction: column;
   gap: var(--space-xs);
+}
+
+.similar-status {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-xs);
+  min-height: 4rem;
+  color: var(--color-ink-soft);
+  font-size: var(--text-sm);
 }
 
 .search-results {
@@ -1475,6 +1502,7 @@ input[aria-invalid="true"] {
       "video video"
       "meta meta"
       "chat chat"
+      "similar similar"
       "voice voice"
       "queue members";
   }
@@ -1504,6 +1532,7 @@ input[aria-invalid="true"] {
       "picker picker"
       "video chat"
       "meta ."
+      "similar similar"
       "voice voice"
       "queue members";
     align-items: stretch;
@@ -1535,6 +1564,7 @@ input[aria-invalid="true"] {
       "picker picker"
       "video chat"
       "meta ."
+      "similar similar"
       "voice voice"
       "queue members";
   }

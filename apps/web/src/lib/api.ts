@@ -32,3 +32,17 @@ export async function searchYouTube(query: string): Promise<YouTubeSearchResult[
   }
   return payload.items ?? [];
 }
+
+export async function getSimilarYouTubeVideos(videoId: string): Promise<YouTubeSearchResult[]> {
+  const response = await fetch(
+    `${API_URL}/api/youtube/similar?videoId=${encodeURIComponent(videoId)}`,
+  );
+  const payload = (await response.json().catch(() => ({}))) as {
+    items?: YouTubeSearchResult[];
+    message?: string;
+  };
+  if (!response.ok) {
+    throw new Error(payload.message ?? "Không lấy được gợi ý video.");
+  }
+  return payload.items ?? [];
+}

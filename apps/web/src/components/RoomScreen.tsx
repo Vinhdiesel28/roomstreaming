@@ -2,6 +2,7 @@ import {
   Check,
   Copy,
   Crown,
+  ListVideo,
   LoaderCircle,
   LogOut,
   MessageCircle,
@@ -15,7 +16,7 @@ import {
 } from "lucide-react";
 import { FormEvent, useEffect, useRef, useState } from "react";
 import type { Socket } from "socket.io-client";
-import { searchYouTube } from "../lib/api";
+import { getSimilarYouTubeVideos, searchYouTube } from "../lib/api";
 import type {
   ChatMessage,
   PlaybackCommand,
@@ -58,15 +59,26 @@ export function RoomScreen({
   const [searchError, setSearchError] = useState<string | null>(null);
   const [addingVideoId, setAddingVideoId] = useState<string | null>(null);
   const [addedVideoId, setAddedVideoId] = useState<string | null>(null);
+  const [similarResults, setSimilarResults] = useState<YouTubeSearchResult[]>([]);
+  const [similarBusy, setSimilarBusy] = useState(false);
+  const [similarError, setSimilarError] = useState<string | null>(null);
   const [chat, setChat] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
   const chatEndRef = useRef<HTMLDivElement>(null);
+  const similarRequestRef = useRef(0);
 
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest" });
   }, [messages]);
+
+  useEffect(() => {
+    similarRequestRef.current += 1;
+    setSimilarResults([]);
+    setSimilarError(null);
+    setSimilarBusy(false);
+  }, [snapshot.currentVideo?.videoId]);
 
   const addVideo = async (event: FormEvent) => {
     event.preventDefault();
@@ -133,11 +145,56 @@ export function RoomScreen({
     }
   };
 
+  const findSimilarVideos = async () => {
+    const videoId = snapshot.currentVideo?.videoId;
+    if (!videoId) return;
+    const requestId = ++similarRequestRef.current;
+    setSimilarBusy(true);
+    setSimilarError(null);
+    setSimilarResults([]);
+    setAddedVideoId(null);
+    try {
+      const [items] = await Promise.all([
+        getSimilarYouTubeVideos(videoId),
+        new Promise((resolve) => window.setTimeout(resolve, 300)),
+      ]);
+      if (similarRequestRef.current !== requestId) return;
+      setSimilarResults(items);
+      if (items.length === 0) {
+        setSimilarError("Chưa tìm thấy video tương tự có thể phát trong phòng.");
+      }
+    } catch (cause) {
+      if (similarRequestRef.current !== requestId) return;
+      setSimilarError(cause instanceof Error ? cause.message : "Không lấy được gợi ý video.");
+    } finally {
+      if (similarRequestRef.current === requestId) setSimilarBusy(false);
+    }
+  };
+
+  const addSimilarResult = async (result: YouTubeSearchResult) => {
+    setAddingVideoId(result.videoId);
+    setAddedVideoId(null);
+    setSimilarError(null);
+    try {
+      await onAddVideo(result.videoId);
+      setAddedVideoId(result.videoId);
+    } catch (cause) {
+      setSimilarError(cause instanceof Error ? cause.message : "Không thể thêm video.");
+    } finally {
+      setAddingVideoId(null);
+    }
+  };
+
   const copyLink = async () => {
     await navigator.clipboard.writeText(`${window.location.origin}/room/${snapshot.roomCode}`);
     setCopied(true);
     window.setTimeout(() => setCopied(false), 2_500);
   };
+
+  const queuedVideoIds = new Set(snapshot.queue.map((item) => item.videoId));
+  const visibleSimilarResults = similarResults.filter(
+    (item) => item.videoId !== snapshot.currentVideo?.videoId && !queuedVideoIds.has(item.videoId),
+  );
 
   return (
     <main className="room-shell">
@@ -308,11 +365,25 @@ export function RoomScreen({
             </span>
             <p>{snapshot.isHost ? "Dùng player YouTube để phát, dừng hoặc tua." : "Thao tác cục bộ sẽ tự bắt nhịp lại với Host."}</p>
           </div>
-          {snapshot.isHost && snapshot.currentVideo && (
-            <button className="btn btn--soft btn--small" type="button" onClick={() => void onCommand("NEXT", 0)}>
-              <SkipForward size={17} /> Video tiếp
-            </button>
-          )}
+          <div className="video-meta__actions">
+            {snapshot.currentVideo && (
+              <button
+                className="btn btn--soft btn--small"
+                type="button"
+                onClick={() => void findSimilarVideos()}
+                disabled={similarBusy}
+                data-state={similarBusy ? "loading" : undefined}
+              >
+                {similarBusy ? <LoaderCircle className="spin" size={17} /> : <ListVideo size={17} />}
+                {similarBusy ? "Đang tìm gợi ý" : "Video tương tự"}
+              </button>
+            )}
+            {snapshot.isHost && snapshot.currentVideo && (
+              <button className="btn btn--soft btn--small" type="button" onClick={() => void onCommand("NEXT", 0)}>
+                <SkipForward size={17} /> Video tiếp
+              </button>
+            )}
+          </div>
         </div>
 
         <section className="chat-panel">
@@ -345,6 +416,59 @@ export function RoomScreen({
             </button>
           </form>
         </section>
+
+        {(similarBusy || similarError || similarResults.length > 0) && (
+          <section className="similar-panel" aria-labelledby="similar-title" aria-busy={similarBusy}>
+            <div className="panel-heading panel-heading--compact">
+              <div>
+                <h2 id="similar-title">Gợi ý xem tiếp</h2>
+                <p><ListVideo size={15} /> Dựa trên video đang phát</p>
+              </div>
+              <span className="count-badge">{visibleSimilarResults.length}</span>
+            </div>
+            {similarBusy && (
+              <p className="similar-status" role="status">
+                <LoaderCircle className="spin" size={18} /> Đang tìm video phù hợp…
+              </p>
+            )}
+            {similarError && <p className="field-helper is-error" role="alert">{similarError}</p>}
+            {!similarBusy && !similarError && visibleSimilarResults.length === 0 && (
+              <p className="similar-status">Các gợi ý đã nằm trong hàng chờ.</p>
+            )}
+            <ul className="search-results similar-results">
+              {visibleSimilarResults.map((result) => {
+                const isAdding = addingVideoId === result.videoId;
+                const isAdded = addedVideoId === result.videoId;
+                return (
+                  <li className="search-result" key={result.videoId}>
+                    <img
+                      src={result.thumbnailUrl}
+                      alt=""
+                      width="120"
+                      height="68"
+                      loading="lazy"
+                      referrerPolicy="no-referrer"
+                    />
+                    <div className="search-result__copy">
+                      <strong>{result.title}</strong>
+                      <span>{result.channelTitle}</span>
+                    </div>
+                    <button
+                      className="icon-action icon-action--quiet search-result__add"
+                      type="button"
+                      onClick={() => void addSimilarResult(result)}
+                      disabled={Boolean(addingVideoId) || isAdded}
+                      data-state={isAdding ? "loading" : isAdded ? "success" : undefined}
+                      aria-label={isAdded ? `Đã thêm ${result.title}` : `Thêm ${result.title}`}
+                    >
+                      {isAdding ? <LoaderCircle className="spin" size={18} /> : isAdded ? <Check size={18} /> : <Plus size={18} />}
+                    </button>
+                  </li>
+                );
+              })}
+            </ul>
+          </section>
+        )}
 
         <VoiceChat socket={socket} connected={connected} />
 

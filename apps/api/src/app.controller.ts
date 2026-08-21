@@ -68,4 +68,41 @@ export class AppController {
       );
     }
   }
+
+  @Get("api/youtube/similar")
+  async similarYouTube(@Query("videoId") input: unknown, @Ip() ip: string) {
+    const videoId = typeof input === "string" ? input.trim() : "";
+    if (!/^[A-Za-z0-9_-]{11}$/.test(videoId)) {
+      throw new BadRequestException("Video YouTube không hợp lệ.");
+    }
+    if (!this.limiter.allow(`youtube-similar:${ip}`, 5, 60_000)) {
+      throw new HttpException(
+        "Bạn đang lấy gợi ý quá nhanh. Chờ một phút rồi thử lại.",
+        HttpStatus.TOO_MANY_REQUESTS,
+      );
+    }
+
+    try {
+      return { items: await this.youtubeSearch.similar(videoId) };
+    } catch (error) {
+      const code = error instanceof Error ? error.message : "YOUTUBE_SEARCH_UNAVAILABLE";
+      if (code === "YOUTUBE_API_KEY_MISSING") {
+        throw new ServiceUnavailableException(
+          "Gợi ý video chưa được cấu hình. Chủ web cần đặt YOUTUBE_API_KEY trên backend.",
+        );
+      }
+      if (code === "YOUTUBE_VIDEO_NOT_FOUND") {
+        throw new BadRequestException("Không tìm thấy thông tin video đang phát.");
+      }
+      if (code === "YOUTUBE_SEARCH_QUOTA") {
+        throw new HttpException(
+          "Hôm nay đã hết lượt gợi ý YouTube miễn phí. Bạn vẫn có thể tự tìm hoặc dán link.",
+          HttpStatus.TOO_MANY_REQUESTS,
+        );
+      }
+      throw new ServiceUnavailableException(
+        "YouTube đang không phản hồi gợi ý. Bạn vẫn có thể tự tìm hoặc dán link.",
+      );
+    }
+  }
 }

@@ -19,8 +19,20 @@ interface YouTubeSearchResponse {
   error?: { message?: string };
 }
 
+interface YouTubeVideoResponse {
+  items?: Array<{
+    snippet?: {
+      title?: string;
+      channelTitle?: string;
+      categoryId?: string;
+    };
+  }>;
+  error?: { message?: string };
+}
+
 const VIDEO_ID_PATTERN = /^[A-Za-z0-9_-]{11}$/;
 const CACHE_TTL_MS = 5 * 60 * 1000;
+const SIMILAR_CACHE_TTL_MS = 30 * 60 * 1000;
 const MAX_CACHE_ENTRIES = 100;
 
 @Injectable()
@@ -29,12 +41,13 @@ export class YouTubeSearchService {
     string,
     { expiresAt: number; items: YouTubeSearchResult[] }
   >();
+  private readonly similarCache = new Map<
+    string,
+    { expiresAt: number; items: YouTubeSearchResult[] }
+  >();
 
   async search(input: string): Promise<YouTubeSearchResult[]> {
     const query = input.trim().replace(/\s+/g, " ");
-    const apiKey = process.env.YOUTUBE_API_KEY?.trim();
-    if (!apiKey) throw new Error("YOUTUBE_API_KEY_MISSING");
-
     const cacheKey = query.toLocaleLowerCase("vi-VN");
     const cached = this.cache.get(cacheKey);
     if (cached && cached.expiresAt > Date.now()) return cached.items;
@@ -47,19 +60,71 @@ export class YouTubeSearchService {
       maxResults: "8",
       relevanceLanguage: "vi",
       q: query,
-      key: apiKey,
     });
+    const payload = await this.request<YouTubeSearchResponse>("search", params);
+    const items = mapSearchItems(payload.items);
+
+    trimCache(this.cache);
+    this.cache.set(cacheKey, { expiresAt: Date.now() + CACHE_TTL_MS, items });
+    return items;
+  }
+
+  async similar(input: string): Promise<YouTubeSearchResult[]> {
+    const videoId = input.trim();
+    if (!VIDEO_ID_PATTERN.test(videoId)) throw new Error("YOUTUBE_VIDEO_NOT_FOUND");
+
+    const cached = this.similarCache.get(videoId);
+    if (cached && cached.expiresAt > Date.now()) return cached.items;
+
+    const videoParams = new URLSearchParams({
+      part: "snippet",
+      id: videoId,
+    });
+    const videoPayload = await this.request<YouTubeVideoResponse>("videos", videoParams);
+    const source = videoPayload.items?.[0]?.snippet;
+    if (!source?.title) throw new Error("YOUTUBE_VIDEO_NOT_FOUND");
+
+    const searchParams = new URLSearchParams({
+      part: "snippet",
+      type: "video",
+      videoEmbeddable: "true",
+      videoSyndicated: "true",
+      safeSearch: "moderate",
+      maxResults: "12",
+      relevanceLanguage: "vi",
+      q: buildSimilarQuery(source.title),
+    });
+    if (source.categoryId) searchParams.set("videoCategoryId", source.categoryId);
+
+    const searchPayload = await this.request<YouTubeSearchResponse>("search", searchParams);
+    const items = mapSearchItems(searchPayload.items, new Set([videoId])).slice(0, 6);
+
+    trimCache(this.similarCache);
+    this.similarCache.set(videoId, {
+      expiresAt: Date.now() + SIMILAR_CACHE_TTL_MS,
+      items,
+    });
+    return items;
+  }
+
+  private async request<T extends { error?: { message?: string } }>(
+    resource: "search" | "videos",
+    params: URLSearchParams,
+  ): Promise<T> {
+    const apiKey = process.env.YOUTUBE_API_KEY?.trim();
+    if (!apiKey) throw new Error("YOUTUBE_API_KEY_MISSING");
+    params.set("key", apiKey);
 
     let response: Response;
     try {
-      response = await fetch(`https://www.googleapis.com/youtube/v3/search?${params}`, {
+      response = await fetch(`https://www.googleapis.com/youtube/v3/${resource}?${params}`, {
         signal: AbortSignal.timeout(8_000),
       });
     } catch {
       throw new Error("YOUTUBE_SEARCH_UNAVAILABLE");
     }
 
-    const payload = (await response.json().catch(() => ({}))) as YouTubeSearchResponse;
+    const payload = (await response.json().catch(() => ({}))) as T;
     if (!response.ok) {
       const message = payload.error?.message?.toLowerCase() ?? "";
       if (response.status === 403 && message.includes("quota")) {
@@ -67,32 +132,54 @@ export class YouTubeSearchService {
       }
       throw new Error("YOUTUBE_SEARCH_UNAVAILABLE");
     }
-
-    const items = (payload.items ?? []).flatMap<YouTubeSearchResult>((item) => {
-      const videoId = item.id?.videoId;
-      const snippet = item.snippet;
-      const thumbnailUrl =
-        snippet?.thumbnails?.medium?.url ??
-        snippet?.thumbnails?.high?.url ??
-        snippet?.thumbnails?.default?.url;
-      if (!videoId || !VIDEO_ID_PATTERN.test(videoId) || !snippet?.title || !thumbnailUrl) {
-        return [];
-      }
-      return [{
-        videoId,
-        title: decodeHtml(snippet.title),
-        channelTitle: decodeHtml(snippet.channelTitle ?? "YouTube"),
-        thumbnailUrl,
-      }];
-    });
-
-    if (this.cache.size >= MAX_CACHE_ENTRIES) {
-      const oldestKey = this.cache.keys().next().value as string | undefined;
-      if (oldestKey) this.cache.delete(oldestKey);
-    }
-    this.cache.set(cacheKey, { expiresAt: Date.now() + CACHE_TTL_MS, items });
-    return items;
+    return payload;
   }
+}
+
+function mapSearchItems(
+  source: YouTubeSearchResponse["items"] = [],
+  excluded = new Set<string>(),
+) {
+  const seen = new Set(excluded);
+  return source.flatMap<YouTubeSearchResult>((item) => {
+    const videoId = item.id?.videoId;
+    const snippet = item.snippet;
+    const thumbnailUrl =
+      snippet?.thumbnails?.medium?.url ??
+      snippet?.thumbnails?.high?.url ??
+      snippet?.thumbnails?.default?.url;
+    if (
+      !videoId ||
+      seen.has(videoId) ||
+      !VIDEO_ID_PATTERN.test(videoId) ||
+      !snippet?.title ||
+      !thumbnailUrl
+    ) {
+      return [];
+    }
+    seen.add(videoId);
+    return [{
+      videoId,
+      title: decodeHtml(snippet.title),
+      channelTitle: decodeHtml(snippet.channelTitle ?? "YouTube"),
+      thumbnailUrl,
+    }];
+  });
+}
+
+function buildSimilarQuery(title: string) {
+  const cleaned = decodeHtml(title)
+    .replace(/[\[(](official (video|audio)|lyrics?|mv|4k)[\])]/gi, " ")
+    .replace(/\b(official video|official audio|lyrics?|mv|4k)\b/gi, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  return (cleaned || decodeHtml(title)).slice(0, 100);
+}
+
+function trimCache(cache: Map<string, unknown>) {
+  if (cache.size < MAX_CACHE_ENTRIES) return;
+  const oldestKey = cache.keys().next().value as string | undefined;
+  if (oldestKey) cache.delete(oldestKey);
 }
 
 function decodeHtml(value: string) {
