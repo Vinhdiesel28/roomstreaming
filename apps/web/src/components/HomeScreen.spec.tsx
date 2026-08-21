@@ -15,13 +15,12 @@ const baseProps = {
 describe("HomeScreen invitation flow", () => {
   beforeEach(() => localStorage.clear());
 
-  it("shows only the name form when opened from a room link", () => {
+  it("keeps the homepage behind a name-only invitation dialog", () => {
     const html = renderToStaticMarkup(<HomeScreen {...baseProps} initialCode="ABCD2345" />);
-    expect(html).toContain("Bạn được mời vào phòng");
-    expect(html).toContain("ABCD2345");
+    expect(html).toContain("<dialog");
+    expect(html).toContain("id=\"invite-name\"");
     expect(html).toContain("Vào phòng");
-    expect(html).not.toContain("Tạo phòng mới");
-    expect(html).not.toContain("id=\"join-code\"");
+    expect(html).toContain("Tạo phòng mới");
   });
 
   it("keeps create and manual join forms on the homepage", () => {

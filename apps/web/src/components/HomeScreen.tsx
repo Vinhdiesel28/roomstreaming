@@ -1,5 +1,6 @@
-import { ArrowLeft, ArrowRight, Link2, LoaderCircle, Plus, Radio, ShieldCheck, Users } from "lucide-react";
+import { ArrowRight, Link2, Plus, Radio, ShieldCheck, Users } from "lucide-react";
 import { FormEvent, useEffect, useState } from "react";
+import { InviteDialog } from "./InviteDialog";
 
 interface Props {
   connected: boolean;
@@ -59,76 +60,10 @@ export function HomeScreen({
     }
   };
 
-  if (initialCode) {
-    const helperText = error
-      ? error
-      : connected
-        ? "Máy chủ đã sẵn sàng. Nhập tên để tham gia."
-        : connecting
-          ? "Đang đánh thức máy chủ miễn phí…"
-          : "Máy chủ đang ngoại tuyến.";
-
-    return (
-      <main className="invite-shell">
-        <section className="invite-card reveal" aria-labelledby="invite-title">
-          <span className="invite-card__mark" aria-hidden="true"><Link2 size={24} /></span>
-          <div className="invite-card__copy">
-            <h1 id="invite-title">Bạn được mời vào phòng.</h1>
-            <p>Nhập tên hiển thị là có thể xem cùng mọi người ngay.</p>
-          </div>
-
-          <div className="invite-code" aria-label={`Mã phòng ${initialCode}`}>
-            <span>Phòng</span>
-            <strong>{initialCode}</strong>
-          </div>
-
-          <form className="invite-form" onSubmit={submitJoin}>
-            <label htmlFor="invite-name">Tên hiển thị</label>
-            <input
-              id="invite-name"
-              value={name}
-              onChange={(event) => {
-                setName(event.target.value);
-                if (error) setError(null);
-              }}
-              placeholder="Ví dụ: Minh"
-              minLength={2}
-              maxLength={32}
-              required
-              autoFocus
-              aria-invalid={Boolean(error)}
-              aria-describedby="invite-helper"
-            />
-            <p
-              className={`invite-helper ${error ? "is-error" : ""}`}
-              id="invite-helper"
-              role={error ? "alert" : "status"}
-            >
-              <span className={`connection-dot ${connected ? "is-online" : ""}`} />
-              {helperText}
-            </p>
-            <button
-              className="btn btn--ink"
-              type="submit"
-              disabled={!connected || busy !== null || name.trim().length < 2}
-              data-state={busy === "join" ? "loading" : error ? "error" : undefined}
-            >
-              {busy === "join" ? <LoaderCircle className="spin" size={18} /> : <ArrowRight size={18} />}
-              <span>{busy === "join" ? "Đang vào phòng…" : "Vào phòng"}</span>
-            </button>
-          </form>
-
-          <button className="btn btn--soft btn--small invite-back" type="button" onClick={onCancelInvite}>
-            <ArrowLeft size={17} /> Về trang chủ
-          </button>
-        </section>
-      </main>
-    );
-  }
-
   return (
-    <main className="home">
-      <section className="home-intro reveal" style={{ "--i": 0 } as React.CSSProperties}>
+    <>
+      <main className="home">
+        <section className="home-intro reveal" style={{ "--i": 0 } as React.CSSProperties}>
         <div className="live-mark" aria-hidden="true"><span /></div>
         <h1>Xem cùng nhau.<br />Không cần tài khoản.</h1>
         <p className="home-intro__lede">
@@ -139,7 +74,7 @@ export function HomeScreen({
           <span><ShieldCheck size={18} /> Không lưu chat</span>
           <span><Users size={18} /> Tối đa 20 người</span>
         </div>
-      </section>
+        </section>
 
       <section className="entry-workbench reveal" style={{ "--i": 1 } as React.CSSProperties}>
         <form className="entry-card entry-card--pear" onSubmit={submitCreate}>
@@ -199,8 +134,24 @@ export function HomeScreen({
           <span className={`connection-dot ${connected ? "is-online" : ""}`} />
           {connected ? "Máy chủ đã sẵn sàng" : connecting ? "Đang đánh thức máy chủ…" : "Máy chủ đang ngoại tuyến"}
         </div>
-        {error && <p className="form-error" role="alert">{error}</p>}
-      </section>
-    </main>
+          {error && !initialCode && <p className="form-error" role="alert">{error}</p>}
+        </section>
+      </main>
+      {initialCode && (
+        <InviteDialog
+          name={name}
+          connected={connected}
+          connecting={connecting}
+          busy={busy === "join"}
+          error={error}
+          onNameChange={(nextName) => {
+            setName(nextName);
+            if (error) setError(null);
+          }}
+          onSubmit={submitJoin}
+          onClose={onCancelInvite}
+        />
+      )}
+    </>
   );
 }
