@@ -51,7 +51,7 @@ export function RoomScreen({
   onSendChat,
 }: Props) {
   const [videoUrl, setVideoUrl] = useState("");
-  const [videoSource, setVideoSource] = useState<"link" | "search">("link");
+  const [videoSource, setVideoSource] = useState<"link" | "search">("search");
   const [searchQuery, setSearchQuery] = useState("");
   const [searchResults, setSearchResults] = useState<YouTubeSearchResult[]>([]);
   const [searchBusy, setSearchBusy] = useState(false);
@@ -160,53 +160,38 @@ export function RoomScreen({
       </section>
 
       <div className="room-grid">
-        <section className="video-stage">
-          <YouTubePlayer playback={snapshot.currentVideo} isHost={snapshot.isHost} onCommand={onCommand} />
-          <div className="video-meta">
+        <section className="video-picker" aria-labelledby="video-picker-title">
+          <div className="panel-heading video-picker__heading">
             <div>
-              <span className="role-line">
-                {snapshot.isHost ? <><Crown size={16} /> Bạn là Host</> : <><UserRound size={16} /> Host đang giữ nhịp</>}
-              </span>
-              <p>{snapshot.isHost ? "Dùng player YouTube để phát, dừng hoặc tua." : "Thao tác cục bộ sẽ tự bắt nhịp lại với Host."}</p>
+              <h2 id="video-picker-title">Chọn video</h2>
+              <p>Tìm trên YouTube hoặc dán link để thêm vào phòng.</p>
             </div>
-            {snapshot.isHost && snapshot.currentVideo && (
-              <button className="btn btn--soft btn--small" type="button" onClick={() => void onCommand("NEXT", 0)}>
-                <SkipForward size={17} /> Video tiếp
+          </div>
+          <div className="video-picker__body">
+            <div className="video-source-switch" aria-label="Cách thêm video">
+              <button
+                type="button"
+                aria-pressed={videoSource === "link"}
+                onClick={() => {
+                  setVideoSource("link");
+                  setSearchError(null);
+                }}
+              >
+                <Plus size={16} /> Dán link
               </button>
-            )}
-          </div>
-        </section>
+              <button
+                type="button"
+                aria-pressed={videoSource === "search"}
+                onClick={() => {
+                  setVideoSource("search");
+                  setError(null);
+                }}
+              >
+                <Search size={16} /> Tìm video
+              </button>
+            </div>
 
-        <aside className="queue-panel">
-          <div className="panel-heading">
-            <div><h2>Hàng chờ</h2><p>{snapshot.queue.length}/50 video</p></div>
-            <span className="count-badge">{snapshot.queue.length}</span>
-          </div>
-          <div className="video-source-switch" aria-label="Cách thêm video">
-            <button
-              type="button"
-              aria-pressed={videoSource === "link"}
-              onClick={() => {
-                setVideoSource("link");
-                setSearchError(null);
-              }}
-            >
-              <Plus size={16} /> Dán link
-            </button>
-            <button
-              type="button"
-              aria-pressed={videoSource === "search"}
-              onClick={() => {
-                setVideoSource("search");
-                setError(null);
-              }}
-            >
-              <Search size={16} /> Tìm video
-            </button>
-          </div>
-
-          {videoSource === "link" ? (
-            <>
+            {videoSource === "link" ? (
               <form className="add-video" onSubmit={addVideo}>
                 <label htmlFor="youtube-url">Link YouTube</label>
                 <div className="inline-field">
@@ -238,78 +223,135 @@ export function RoomScreen({
                   {error ?? "Hỗ trợ link video, Shorts, Live và youtu.be."}
                 </p>
               </form>
-            </>
-          ) : (
-            <div className="youtube-search">
-              <form className="add-video" onSubmit={findVideos}>
-                <label htmlFor="youtube-search">Tìm trên YouTube</label>
-                <div className="inline-field">
-                  <input
-                    id="youtube-search"
-                    type="search"
-                    value={searchQuery}
-                    onChange={(event) => setSearchQuery(event.target.value)}
-                    placeholder="Tên bài hát, video…"
-                    maxLength={100}
-                    autoComplete="off"
-                    aria-invalid={Boolean(searchError)}
-                    aria-describedby="youtube-search-helper"
-                  />
-                  <button
-                    className="icon-action icon-action--add"
-                    type="submit"
-                    disabled={searchBusy || searchQuery.trim().length < 2}
-                    data-state={searchBusy ? "loading" : undefined}
-                    aria-label={searchBusy ? "Đang tìm video" : "Tìm video"}
+            ) : (
+              <div className="youtube-search">
+                <form className="add-video" onSubmit={findVideos}>
+                  <label htmlFor="youtube-search">Tìm trên YouTube</label>
+                  <div className="inline-field">
+                    <input
+                      id="youtube-search"
+                      type="search"
+                      value={searchQuery}
+                      onChange={(event) => setSearchQuery(event.target.value)}
+                      placeholder="Tên bài hát, video…"
+                      maxLength={100}
+                      autoComplete="off"
+                      aria-invalid={Boolean(searchError)}
+                      aria-describedby="youtube-search-helper"
+                    />
+                    <button
+                      className="icon-action icon-action--add"
+                      type="submit"
+                      disabled={searchBusy || searchQuery.trim().length < 2}
+                      data-state={searchBusy ? "loading" : undefined}
+                      aria-label={searchBusy ? "Đang tìm video" : "Tìm video"}
+                    >
+                      {searchBusy ? <LoaderCircle className="spin" size={20} /> : <Search size={19} />}
+                    </button>
+                  </div>
+                  <p
+                    className={`field-helper ${searchError ? "is-error" : ""}`}
+                    id="youtube-search-helper"
+                    role={searchError ? "alert" : undefined}
                   >
-                    {searchBusy ? <LoaderCircle className="spin" size={20} /> : <Search size={19} />}
-                  </button>
-                </div>
-                <p
-                  className={`field-helper ${searchError ? "is-error" : ""}`}
-                  id="youtube-search-helper"
-                  role={searchError ? "alert" : undefined}
-                >
-                  {searchError ?? "Tìm tối đa 8 video có thể phát trong trang."}
+                    {searchError ?? "Tìm tối đa 8 video có thể phát trong trang."}
+                  </p>
+                </form>
+                <p className="visually-hidden" aria-live="polite">
+                  {searchBusy ? "Đang tìm video" : `${searchResults.length} kết quả tìm kiếm`}
                 </p>
-              </form>
-              <p className="visually-hidden" aria-live="polite">
-                {searchBusy ? "Đang tìm video" : `${searchResults.length} kết quả tìm kiếm`}
-              </p>
-              <ul className="search-results" aria-busy={searchBusy}>
-                {searchResults.map((result) => {
-                  const isAdding = addingVideoId === result.videoId;
-                  const isAdded = addedVideoId === result.videoId;
-                  return (
-                    <li className="search-result" key={result.videoId}>
-                      <img
-                        src={result.thumbnailUrl}
-                        alt=""
-                        width="120"
-                        height="68"
-                        loading="lazy"
-                        referrerPolicy="no-referrer"
-                      />
-                      <div className="search-result__copy">
-                        <strong>{result.title}</strong>
-                        <span>{result.channelTitle}</span>
-                      </div>
-                      <button
-                        className="icon-action icon-action--quiet search-result__add"
-                        type="button"
-                        onClick={() => void addSearchResult(result)}
-                        disabled={Boolean(addingVideoId) || isAdded}
-                        data-state={isAdding ? "loading" : isAdded ? "success" : undefined}
-                        aria-label={isAdded ? `Đã thêm ${result.title}` : `Thêm ${result.title}`}
-                      >
-                        {isAdding ? <LoaderCircle className="spin" size={18} /> : isAdded ? <Check size={18} /> : <Plus size={18} />}
-                      </button>
-                    </li>
-                  );
-                })}
-              </ul>
+                <ul className="search-results" aria-busy={searchBusy}>
+                  {searchResults.map((result) => {
+                    const isAdding = addingVideoId === result.videoId;
+                    const isAdded = addedVideoId === result.videoId;
+                    return (
+                      <li className="search-result" key={result.videoId}>
+                        <img
+                          src={result.thumbnailUrl}
+                          alt=""
+                          width="120"
+                          height="68"
+                          loading="lazy"
+                          referrerPolicy="no-referrer"
+                        />
+                        <div className="search-result__copy">
+                          <strong>{result.title}</strong>
+                          <span>{result.channelTitle}</span>
+                        </div>
+                        <button
+                          className="icon-action icon-action--quiet search-result__add"
+                          type="button"
+                          onClick={() => void addSearchResult(result)}
+                          disabled={Boolean(addingVideoId) || isAdded}
+                          data-state={isAdding ? "loading" : isAdded ? "success" : undefined}
+                          aria-label={isAdded ? `Đã thêm ${result.title}` : `Thêm ${result.title}`}
+                        >
+                          {isAdding ? <LoaderCircle className="spin" size={18} /> : isAdded ? <Check size={18} /> : <Plus size={18} />}
+                        </button>
+                      </li>
+                    );
+                  })}
+                </ul>
+              </div>
+            )}
+          </div>
+        </section>
+
+        <section className="video-stage">
+          <YouTubePlayer playback={snapshot.currentVideo} isHost={snapshot.isHost} onCommand={onCommand} />
+          <div className="video-meta">
+            <div>
+              <span className="role-line">
+                {snapshot.isHost ? <><Crown size={16} /> Bạn là Host</> : <><UserRound size={16} /> Host đang giữ nhịp</>}
+              </span>
+              <p>{snapshot.isHost ? "Dùng player YouTube để phát, dừng hoặc tua." : "Thao tác cục bộ sẽ tự bắt nhịp lại với Host."}</p>
             </div>
-          )}
+            {snapshot.isHost && snapshot.currentVideo && (
+              <button className="btn btn--soft btn--small" type="button" onClick={() => void onCommand("NEXT", 0)}>
+                <SkipForward size={17} /> Video tiếp
+              </button>
+            )}
+          </div>
+        </section>
+
+        <section className="chat-panel">
+          <div className="panel-heading panel-heading--compact">
+            <div><h2>Trò chuyện</h2><p><MessageCircle size={15} /> Không lưu lịch sử</p></div>
+          </div>
+          <div className="chat-log" aria-live="polite">
+            {messages.length === 0 ? (
+              <div className="chat-empty"><MessageCircle size={22} /><p>Tin nhắn chỉ tồn tại trong phiên này.</p></div>
+            ) : messages.map((message) => (
+              <article className={`chat-message ${message.senderSessionId === sessionId ? "is-mine" : ""}`} key={message.id}>
+                <div><strong>{message.senderName}</strong><time dateTime={new Date(message.sentAt).toISOString()}>{new Date(message.sentAt).toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit" })}</time></div>
+                <p>{message.text}</p>
+              </article>
+            ))}
+            <div ref={chatEndRef} />
+          </div>
+          <form className="chat-form" onSubmit={sendChat}>
+            <label className="visually-hidden" htmlFor="chat-message">Tin nhắn</label>
+            <input
+              id="chat-message"
+              value={chat}
+              onChange={(event) => setChat(event.target.value)}
+              placeholder="Nhắn cho cả phòng…"
+              maxLength={500}
+              autoComplete="off"
+            />
+            <button className="icon-action icon-action--send" type="submit" disabled={!chat.trim()} aria-label="Gửi tin nhắn">
+              <Send size={19} />
+            </button>
+          </form>
+        </section>
+
+        <VoiceChat socket={socket} connected={connected} />
+
+        <aside className="queue-panel">
+          <div className="panel-heading">
+            <div><h2>Hàng chờ</h2><p>{snapshot.queue.length}/50 video</p></div>
+            <span className="count-badge">{snapshot.queue.length}</span>
+          </div>
           <ol className="queue-list">
             {snapshot.queue.length === 0 ? (
               <li className="queue-empty">Chưa có video tiếp theo.</li>
@@ -351,38 +393,6 @@ export function RoomScreen({
               </li>
             ))}
           </ul>
-          <VoiceChat socket={socket} connected={connected} />
-        </section>
-
-        <section className="chat-panel">
-          <div className="panel-heading panel-heading--compact">
-            <div><h2>Trò chuyện</h2><p><MessageCircle size={15} /> Không lưu lịch sử</p></div>
-          </div>
-          <div className="chat-log" aria-live="polite">
-            {messages.length === 0 ? (
-              <div className="chat-empty"><MessageCircle size={22} /><p>Tin nhắn chỉ tồn tại trong phiên này.</p></div>
-            ) : messages.map((message) => (
-              <article className={`chat-message ${message.senderSessionId === sessionId ? "is-mine" : ""}`} key={message.id}>
-                <div><strong>{message.senderName}</strong><time dateTime={new Date(message.sentAt).toISOString()}>{new Date(message.sentAt).toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit" })}</time></div>
-                <p>{message.text}</p>
-              </article>
-            ))}
-            <div ref={chatEndRef} />
-          </div>
-          <form className="chat-form" onSubmit={sendChat}>
-            <label className="visually-hidden" htmlFor="chat-message">Tin nhắn</label>
-            <input
-              id="chat-message"
-              value={chat}
-              onChange={(event) => setChat(event.target.value)}
-              placeholder="Nhắn cho cả phòng…"
-              maxLength={500}
-              autoComplete="off"
-            />
-            <button className="icon-action icon-action--send" type="submit" disabled={!chat.trim()} aria-label="Gửi tin nhắn">
-              <Send size={19} />
-            </button>
-          </form>
         </section>
       </div>
     </main>
