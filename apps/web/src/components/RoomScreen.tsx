@@ -1,5 +1,6 @@
 import {
   Check,
+  CircleAlert,
   Copy,
   Crown,
   ListVideo,
@@ -42,6 +43,62 @@ interface Props {
   onSendChat: (text: string, replyTo?: ChatReply) => Promise<unknown>;
 }
 
+type VideoResultState = "idle" | "loading" | "success" | "error";
+
+interface VideoResultRowProps {
+  result: YouTubeSearchResult;
+  state: VideoResultState;
+  disabled: boolean;
+  onAdd: () => void;
+}
+
+export function VideoResultRow({ result, state, disabled, onAdd }: VideoResultRowProps) {
+  const label = state === "loading"
+    ? `Đang thêm ${result.title}`
+    : state === "success"
+      ? `Đã thêm ${result.title}`
+      : state === "error"
+        ? `Thử thêm lại ${result.title}`
+        : `Thêm ${result.title} vào hàng chờ`;
+
+  return (
+    <li>
+      <button
+        className="search-result"
+        type="button"
+        onClick={onAdd}
+        disabled={disabled}
+        data-state={state === "idle" ? undefined : state}
+        aria-label={label}
+      >
+        <img
+          src={result.thumbnailUrl}
+          alt=""
+          width="120"
+          height="68"
+          loading="lazy"
+          referrerPolicy="no-referrer"
+        />
+        <span className="search-result__copy">
+          <strong>{result.title}</strong>
+          <span>{result.channelTitle}</span>
+        </span>
+        <span className="search-result__status" aria-hidden="true">
+          {state === "loading" ? (
+            <LoaderCircle className="spin" size={18} />
+          ) : state === "success" ? (
+            <Check size={18} />
+          ) : state === "error" ? (
+            <CircleAlert size={18} />
+          ) : (
+            <Plus size={18} />
+          )}
+        </span>
+      </button>
+    </li>
+  );
+}
+
 export function RoomScreen({
   snapshot,
   sessionId,
@@ -62,6 +119,7 @@ export function RoomScreen({
   const [searchError, setSearchError] = useState<string | null>(null);
   const [addingVideoId, setAddingVideoId] = useState<string | null>(null);
   const [addedVideoId, setAddedVideoId] = useState<string | null>(null);
+  const [failedVideoId, setFailedVideoId] = useState<string | null>(null);
   const [similarResults, setSimilarResults] = useState<YouTubeSearchResult[]>([]);
   const [similarBusy, setSimilarBusy] = useState(false);
   const [similarError, setSimilarError] = useState<string | null>(null);
@@ -85,6 +143,7 @@ export function RoomScreen({
     setSimilarError(null);
     setSimilarBusy(Boolean(videoId));
     setAddedVideoId(null);
+    setFailedVideoId(null);
 
     if (!videoId) {
       return () => {
@@ -177,11 +236,13 @@ export function RoomScreen({
   const addSearchResult = async (result: YouTubeSearchResult) => {
     setAddingVideoId(result.videoId);
     setAddedVideoId(null);
+    setFailedVideoId(null);
     setSearchError(null);
     try {
       await onAddVideo(result.videoId);
       setAddedVideoId(result.videoId);
     } catch (cause) {
+      setFailedVideoId(result.videoId);
       setSearchError(cause instanceof Error ? cause.message : "Không thể thêm video.");
     } finally {
       setAddingVideoId(null);
@@ -191,11 +252,13 @@ export function RoomScreen({
   const addSimilarResult = async (result: YouTubeSearchResult) => {
     setAddingVideoId(result.videoId);
     setAddedVideoId(null);
+    setFailedVideoId(null);
     setSimilarError(null);
     try {
       await onAddVideo(result.videoId);
       setAddedVideoId(result.videoId);
     } catch (cause) {
+      setFailedVideoId(result.videoId);
       setSimilarError(cause instanceof Error ? cause.message : "Không thể thêm video.");
     } finally {
       setAddingVideoId(null);
@@ -339,31 +402,15 @@ export function RoomScreen({
                   {searchResults.map((result) => {
                     const isAdding = addingVideoId === result.videoId;
                     const isAdded = addedVideoId === result.videoId;
+                    const isFailed = failedVideoId === result.videoId;
                     return (
-                      <li className="search-result" key={result.videoId}>
-                        <img
-                          src={result.thumbnailUrl}
-                          alt=""
-                          width="120"
-                          height="68"
-                          loading="lazy"
-                          referrerPolicy="no-referrer"
-                        />
-                        <div className="search-result__copy">
-                          <strong>{result.title}</strong>
-                          <span>{result.channelTitle}</span>
-                        </div>
-                        <button
-                          className="icon-action icon-action--quiet search-result__add"
-                          type="button"
-                          onClick={() => void addSearchResult(result)}
-                          disabled={Boolean(addingVideoId) || isAdded}
-                          data-state={isAdding ? "loading" : isAdded ? "success" : undefined}
-                          aria-label={isAdded ? `Đã thêm ${result.title}` : `Thêm ${result.title}`}
-                        >
-                          {isAdding ? <LoaderCircle className="spin" size={18} /> : isAdded ? <Check size={18} /> : <Plus size={18} />}
-                        </button>
-                      </li>
+                      <VideoResultRow
+                        key={result.videoId}
+                        result={result}
+                        state={isAdding ? "loading" : isAdded ? "success" : isFailed ? "error" : "idle"}
+                        disabled={Boolean(addingVideoId) || isAdded}
+                        onAdd={() => void addSearchResult(result)}
+                      />
                     );
                   })}
                 </ul>
@@ -377,12 +424,9 @@ export function RoomScreen({
         </section>
 
         <div className="video-meta">
-          <div>
-            <span className="role-line">
-              {snapshot.isHost ? <><Crown size={16} /> Bạn là Host</> : <><UserRound size={16} /> Host đang giữ nhịp</>}
-            </span>
-            <p>{snapshot.isHost ? "Dùng player YouTube để phát, dừng hoặc tua." : "Thao tác cục bộ sẽ tự bắt nhịp lại với Host."}</p>
-          </div>
+          <span className="role-line">
+            {snapshot.isHost ? <><Crown size={16} /> Bạn là Host</> : <><UserRound size={16} /> Host đang giữ nhịp</>}
+          </span>
           {snapshot.isHost && snapshot.currentVideo && (
             <div className="video-meta__actions">
               <button className="btn btn--soft btn--small" type="button" onClick={() => void onCommand("NEXT", 0)}>
@@ -483,31 +527,15 @@ export function RoomScreen({
               {visibleSimilarResults.map((result) => {
                 const isAdding = addingVideoId === result.videoId;
                 const isAdded = addedVideoId === result.videoId;
+                const isFailed = failedVideoId === result.videoId;
                 return (
-                  <li className="search-result" key={result.videoId}>
-                    <img
-                      src={result.thumbnailUrl}
-                      alt=""
-                      width="120"
-                      height="68"
-                      loading="lazy"
-                      referrerPolicy="no-referrer"
-                    />
-                    <div className="search-result__copy">
-                      <strong>{result.title}</strong>
-                      <span>{result.channelTitle}</span>
-                    </div>
-                    <button
-                      className="icon-action icon-action--quiet search-result__add"
-                      type="button"
-                      onClick={() => void addSimilarResult(result)}
-                      disabled={Boolean(addingVideoId) || isAdded}
-                      data-state={isAdding ? "loading" : isAdded ? "success" : undefined}
-                      aria-label={isAdded ? `Đã thêm ${result.title}` : `Thêm ${result.title}`}
-                    >
-                      {isAdding ? <LoaderCircle className="spin" size={18} /> : isAdded ? <Check size={18} /> : <Plus size={18} />}
-                    </button>
-                  </li>
+                  <VideoResultRow
+                    key={result.videoId}
+                    result={result}
+                    state={isAdding ? "loading" : isAdded ? "success" : isFailed ? "error" : "idle"}
+                    disabled={Boolean(addingVideoId) || isAdded}
+                    onAdd={() => void addSimilarResult(result)}
+                  />
                 );
               })}
             </ul>

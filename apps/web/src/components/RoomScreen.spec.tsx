@@ -1,9 +1,14 @@
 // @vitest-environment jsdom
 
+import { act } from "react";
+import { createRoot } from "react-dom/client";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vitest";
 import type { RoomSnapshot } from "../types";
-import { RoomScreen } from "./RoomScreen";
+import { RoomScreen, VideoResultRow } from "./RoomScreen";
+
+(globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean })
+  .IS_REACT_ACT_ENVIRONMENT = true;
 
 const snapshot: RoomSnapshot = {
   roomCode: "ABCD2345",
@@ -25,6 +30,36 @@ const snapshot: RoomSnapshot = {
 };
 
 describe("RoomScreen layout", () => {
+  it("adds a video when any part of a result row is clicked", () => {
+    const container = document.createElement("div");
+    const root = createRoot(container);
+    const onAdd = vi.fn();
+
+    act(() => {
+      root.render(
+        <VideoResultRow
+          result={{
+            videoId: "dQw4w9WgXcQ",
+            title: "Video thử nghiệm",
+            channelTitle: "Kênh thử nghiệm",
+            thumbnailUrl: "https://i.ytimg.com/test.jpg",
+          }}
+          state="idle"
+          disabled={false}
+          onAdd={onAdd}
+        />,
+      );
+    });
+
+    const resultButton = container.querySelector<HTMLButtonElement>(".search-result");
+    act(() => resultButton?.click());
+
+    expect(resultButton?.querySelector("img")).not.toBeNull();
+    expect(resultButton?.textContent).toContain("Video thử nghiệm");
+    expect(onAdd).toHaveBeenCalledTimes(1);
+    act(() => root.unmount());
+  });
+
   it("orders the picker before video, chat, compact voice and secondary panels", () => {
     const html = renderToStaticMarkup(
       <RoomScreen
