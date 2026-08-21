@@ -1,10 +1,10 @@
-import { useCallback, useEffect, useMemo } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { HomeScreen } from "./components/HomeScreen";
 import { RoomScreen } from "./components/RoomScreen";
 import { useWatchParty } from "./hooks/useWatchParty";
 
-function getRoomCodeFromPath() {
-  return window.location.pathname.match(/^\/room\/([A-Z2-9]{8})\/?$/i)?.[1]?.toUpperCase() ?? "";
+export function roomCodeFromPath(pathname = window.location.pathname) {
+  return pathname.match(/^\/room\/([A-Z2-9]{8})\/?$/i)?.[1]?.toUpperCase() ?? "";
 }
 
 function navigate(path: string) {
@@ -14,11 +14,13 @@ function navigate(path: string) {
 
 export default function App() {
   const party = useWatchParty();
-  const initialCode = useMemo(getRoomCodeFromPath, []);
+  const [routeCode, setRouteCode] = useState(roomCodeFromPath);
 
   useEffect(() => {
     const onPopState = () => {
-      if (!getRoomCodeFromPath() && party.snapshot) void party.leaveRoom();
+      const nextCode = roomCodeFromPath();
+      setRouteCode(nextCode);
+      if (!nextCode && party.snapshot) void party.leaveRoom();
     };
     window.addEventListener("popstate", onPopState);
     return () => window.removeEventListener("popstate", onPopState);
@@ -31,7 +33,8 @@ export default function App() {
 
   const join = useCallback(async (code: string, name: string) => {
     const snapshot = await party.joinRoom(code, name);
-    navigate(`/room/${snapshot.roomCode}`);
+    const roomPath = `/room/${snapshot.roomCode}`;
+    if (window.location.pathname.toUpperCase() !== roomPath.toUpperCase()) navigate(roomPath);
   }, [party]);
 
   const leave = useCallback(async () => {
@@ -68,9 +71,10 @@ export default function App() {
         <HomeScreen
           connected={party.connected}
           connecting={party.connecting}
-          initialCode={initialCode}
+          initialCode={routeCode}
           onCreate={create}
           onJoin={join}
+          onCancelInvite={() => navigate("/")}
         />
       )}
 

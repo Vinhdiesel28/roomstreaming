@@ -183,6 +183,114 @@ ol {
   padding: var(--space-xl) clamp(var(--space-md), 4vw, var(--space-2xl)) var(--space-2xl);
 }
 
+.invite-shell {
+  width: min(100%, 48rem);
+  min-height: calc(100dvh - 9rem);
+  margin-inline: auto;
+  display: grid;
+  place-items: center;
+  padding: var(--space-lg) var(--space-md) var(--space-xl);
+}
+
+.invite-card {
+  width: min(100%, 34rem);
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: var(--space-md);
+  padding: var(--space-lg);
+  border: var(--rule-heavy) solid var(--color-ink);
+  border-radius: var(--radius-panel);
+  background: var(--color-accent-2-soft);
+  color: var(--color-ink);
+  box-shadow: var(--shadow-card);
+}
+
+.invite-card__mark {
+  display: grid;
+  place-items: center;
+  width: 3.5rem;
+  height: 3.5rem;
+  border: var(--rule-heavy) solid var(--color-ink);
+  border-radius: 43% 57% 50% 50%;
+  background: var(--color-accent);
+  color: var(--color-accent-ink);
+}
+
+.invite-card__copy h1 {
+  max-width: 15ch;
+  font-size: clamp(2rem, 9vw, 3.25rem);
+}
+
+.invite-card__copy p {
+  max-width: 52ch;
+  margin-block-start: var(--space-xs);
+  color: var(--color-ink-soft);
+}
+
+.invite-code {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-sm);
+  min-width: 0;
+  padding: var(--space-sm) var(--space-md);
+  border: var(--rule-thin) solid var(--color-rule-strong);
+  border-radius: var(--radius-input);
+  background: var(--color-surface);
+  color: var(--color-ink);
+}
+
+.invite-code span {
+  color: var(--color-ink-soft);
+  font-size: var(--text-sm);
+  font-weight: 700;
+}
+
+.invite-code strong {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  font-family: var(--font-label);
+  font-size: var(--text-md);
+  letter-spacing: 0.08em;
+}
+
+.invite-form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-xs);
+}
+
+.invite-form .btn {
+  width: 100%;
+  margin-block-start: var(--space-xs);
+  white-space: nowrap;
+}
+
+.invite-helper {
+  min-height: 1lh;
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-xs);
+  color: var(--color-ink-soft);
+  font-size: var(--text-xs);
+}
+
+.invite-helper .connection-dot {
+  margin-block-start: 0.35rem;
+}
+
+.invite-helper.is-error {
+  color: var(--color-error);
+  font-weight: 700;
+}
+
+.invite-back {
+  align-self: center;
+  white-space: nowrap;
+}
+
 .home-intro {
   display: flex;
   flex-direction: column;
@@ -1295,6 +1403,7 @@ input[aria-invalid="true"] {
   .video-source-switch button:not([aria-pressed="true"]):hover {
     background: var(--color-paper-2);
   }
+
 }
 
 @media (min-width: 40rem) {

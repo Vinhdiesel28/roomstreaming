@@ -1,4 +1,4 @@
-import { ArrowRight, Link2, Plus, Radio, ShieldCheck, Users } from "lucide-react";
+import { ArrowLeft, ArrowRight, Link2, LoaderCircle, Plus, Radio, ShieldCheck, Users } from "lucide-react";
 import { FormEvent, useEffect, useState } from "react";
 
 interface Props {
@@ -7,11 +7,19 @@ interface Props {
   initialCode: string;
   onCreate: (name: string) => Promise<void>;
   onJoin: (code: string, name: string) => Promise<void>;
+  onCancelInvite: () => void;
 }
 
 const NAME_KEY = "watchroom.display-name";
 
-export function HomeScreen({ connected, connecting, initialCode, onCreate, onJoin }: Props) {
+export function HomeScreen({
+  connected,
+  connecting,
+  initialCode,
+  onCreate,
+  onJoin,
+  onCancelInvite,
+}: Props) {
   const [name, setName] = useState(() => localStorage.getItem(NAME_KEY) ?? "");
   const [code, setCode] = useState(initialCode);
   const [busy, setBusy] = useState<"create" | "join" | null>(null);
@@ -50,6 +58,73 @@ export function HomeScreen({ connected, connecting, initialCode, onCreate, onJoi
       setBusy(null);
     }
   };
+
+  if (initialCode) {
+    const helperText = error
+      ? error
+      : connected
+        ? "Máy chủ đã sẵn sàng. Nhập tên để tham gia."
+        : connecting
+          ? "Đang đánh thức máy chủ miễn phí…"
+          : "Máy chủ đang ngoại tuyến.";
+
+    return (
+      <main className="invite-shell">
+        <section className="invite-card reveal" aria-labelledby="invite-title">
+          <span className="invite-card__mark" aria-hidden="true"><Link2 size={24} /></span>
+          <div className="invite-card__copy">
+            <h1 id="invite-title">Bạn được mời vào phòng.</h1>
+            <p>Nhập tên hiển thị là có thể xem cùng mọi người ngay.</p>
+          </div>
+
+          <div className="invite-code" aria-label={`Mã phòng ${initialCode}`}>
+            <span>Phòng</span>
+            <strong>{initialCode}</strong>
+          </div>
+
+          <form className="invite-form" onSubmit={submitJoin}>
+            <label htmlFor="invite-name">Tên hiển thị</label>
+            <input
+              id="invite-name"
+              value={name}
+              onChange={(event) => {
+                setName(event.target.value);
+                if (error) setError(null);
+              }}
+              placeholder="Ví dụ: Minh"
+              minLength={2}
+              maxLength={32}
+              required
+              autoFocus
+              aria-invalid={Boolean(error)}
+              aria-describedby="invite-helper"
+            />
+            <p
+              className={`invite-helper ${error ? "is-error" : ""}`}
+              id="invite-helper"
+              role={error ? "alert" : "status"}
+            >
+              <span className={`connection-dot ${connected ? "is-online" : ""}`} />
+              {helperText}
+            </p>
+            <button
+              className="btn btn--ink"
+              type="submit"
+              disabled={!connected || busy !== null || name.trim().length < 2}
+              data-state={busy === "join" ? "loading" : error ? "error" : undefined}
+            >
+              {busy === "join" ? <LoaderCircle className="spin" size={18} /> : <ArrowRight size={18} />}
+              <span>{busy === "join" ? "Đang vào phòng…" : "Vào phòng"}</span>
+            </button>
+          </form>
+
+          <button className="btn btn--soft btn--small invite-back" type="button" onClick={onCancelInvite}>
+            <ArrowLeft size={17} /> Về trang chủ
+          </button>
+        </section>
+      </main>
+    );
+  }
 
   return (
     <main className="home">
