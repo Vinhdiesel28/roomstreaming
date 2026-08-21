@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { io, type Socket } from "socket.io-client";
 import { apiUrl, getSessionToken, resetSessionToken } from "../lib/api";
-import type { Ack, ChatMessage, PlaybackCommand, RoomSnapshot } from "../types";
+import type { Ack, ChatMessage, ChatReply, PlaybackCommand, RoomSnapshot } from "../types";
 
 interface PartyState {
   socket: Socket | null;
@@ -148,7 +148,10 @@ export function useWatchParty() {
       emit<RoomSnapshot>("playback:command", { action, positionSec }),
     [emit],
   );
-  const sendChat = useCallback((text: string) => emit<{ id: string }>("chat:send", { text }), [emit]);
+  const sendChat = useCallback(
+    (text: string, replyTo?: ChatReply) => emit<{ id: string }>("chat:send", { text, replyTo }),
+    [emit],
+  );
 
   return {
     ...state,

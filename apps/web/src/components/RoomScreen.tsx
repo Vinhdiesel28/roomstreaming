@@ -7,18 +7,21 @@ import {
   LogOut,
   MessageCircle,
   Plus,
+  Reply,
   Search,
   Send,
   SkipForward,
   Trash2,
   UserRound,
   Users,
+  X,
 } from "lucide-react";
 import { FormEvent, useEffect, useRef, useState } from "react";
 import type { Socket } from "socket.io-client";
 import { getSimilarYouTubeVideos, searchYouTube } from "../lib/api";
 import type {
   ChatMessage,
+  ChatReply,
   PlaybackCommand,
   RoomSnapshot,
   YouTubeSearchResult,
@@ -36,7 +39,7 @@ interface Props {
   onAddVideo: (url: string) => Promise<unknown>;
   onRemoveVideo: (itemId: string) => Promise<unknown>;
   onCommand: (action: PlaybackCommand, positionSec?: number) => Promise<unknown>;
-  onSendChat: (text: string) => Promise<unknown>;
+  onSendChat: (text: string, replyTo?: ChatReply) => Promise<unknown>;
 }
 
 export function RoomScreen({
@@ -63,10 +66,12 @@ export function RoomScreen({
   const [similarBusy, setSimilarBusy] = useState(false);
   const [similarError, setSimilarError] = useState<string | null>(null);
   const [chat, setChat] = useState("");
+  const [replyingTo, setReplyingTo] = useState<ChatMessage | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
   const chatEndRef = useRef<HTMLDivElement>(null);
+  const chatInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest" });
@@ -132,7 +137,13 @@ export function RoomScreen({
     if (!text) return;
     setChat("");
     try {
-      await onSendChat(text);
+      const replyTo = replyingTo ? {
+        messageId: replyingTo.id,
+        senderName: replyingTo.senderName,
+        text: replyingTo.text,
+      } : undefined;
+      await onSendChat(text, replyTo);
+      setReplyingTo(null);
     } catch (cause) {
       setChat(text);
       setError(cause instanceof Error ? cause.message : "Không gửi được tin nhắn.");
@@ -389,15 +400,53 @@ export function RoomScreen({
               <div className="chat-empty"><MessageCircle size={22} /><p>nói chi bây giờ , ù húuuu</p></div>
             ) : messages.map((message) => (
               <article className={`chat-message ${message.senderSessionId === sessionId ? "is-mine" : ""}`} key={message.id}>
-                <div><strong>{message.senderName}</strong><time dateTime={new Date(message.sentAt).toISOString()}>{new Date(message.sentAt).toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit" })}</time></div>
-                <p>{message.text}</p>
+                <button
+                  className="chat-message__content"
+                  type="button"
+                  onClick={() => {
+                    setReplyingTo(message);
+                    chatInputRef.current?.focus();
+                  }}
+                  aria-pressed={replyingTo?.id === message.id}
+                  aria-label={`Trả lời tin nhắn của ${message.senderName}: ${message.text}`}
+                >
+                  <span className="chat-message__meta">
+                    <strong>{message.senderName}</strong>
+                    <time dateTime={new Date(message.sentAt).toISOString()}>{new Date(message.sentAt).toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit" })}</time>
+                    <Reply className="chat-message__reply-icon" size={14} aria-hidden="true" />
+                  </span>
+                  {message.replyTo && (
+                    <span className="chat-reply-quote">
+                      <strong>{message.replyTo.senderName}</strong>
+                      <span>{message.replyTo.text}</span>
+                    </span>
+                  )}
+                  <span className="chat-message__text">{message.text}</span>
+                </button>
               </article>
             ))}
             <div ref={chatEndRef} />
           </div>
           <form className="chat-form" onSubmit={sendChat}>
             <label className="visually-hidden" htmlFor="chat-message">Tin nhắn</label>
+            {replyingTo && (
+              <div className="chat-reply-composer">
+                <div>
+                  <strong>Đang trả lời {replyingTo.senderName}</strong>
+                  <p>{replyingTo.text}</p>
+                </div>
+                <button
+                  className="icon-action icon-action--quiet"
+                  type="button"
+                  onClick={() => setReplyingTo(null)}
+                  aria-label="Hủy trả lời tin nhắn"
+                >
+                  <X size={17} />
+                </button>
+              </div>
+            )}
             <input
+              ref={chatInputRef}
               id="chat-message"
               value={chat}
               onChange={(event) => setChat(event.target.value)}

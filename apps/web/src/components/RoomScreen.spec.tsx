@@ -87,4 +87,37 @@ describe("RoomScreen layout", () => {
     expect(html).not.toContain("Video tương tự");
     expect(html).not.toContain('id="similar-title"');
   });
+
+  it("renders messages as reply targets and shows quoted messages", () => {
+    const html = renderToStaticMarkup(
+      <RoomScreen
+        snapshot={snapshot}
+        sessionId="session-1"
+        messages={[{
+          id: "message-2",
+          senderSessionId: "session-1",
+          senderName: "Vinh",
+          text: "Mình đồng ý",
+          sentAt: 2,
+          replyTo: {
+            messageId: "message-1",
+            senderName: "Bạn",
+            text: "Xem video này nhé",
+          },
+        }]}
+        connected
+        socket={null}
+        onLeave={vi.fn(async () => undefined)}
+        onAddVideo={vi.fn(async () => undefined)}
+        onRemoveVideo={vi.fn(async () => undefined)}
+        onCommand={vi.fn(async () => undefined)}
+        onSendChat={vi.fn(async () => undefined)}
+      />,
+    );
+
+    expect(html).toContain('class="chat-message__content"');
+    expect(html).toContain("Trả lời tin nhắn của Vinh");
+    expect(html).toContain('class="chat-reply-quote"');
+    expect(html).toContain("Xem video này nhé");
+  });
 });

@@ -13,7 +13,7 @@ import type { Server, Socket } from "socket.io";
 import { SessionService } from "../session/session.service";
 import { RateLimiter } from "./rate-limiter";
 import { RoomStore } from "./room.store";
-import type { Ack, RoomRecord, RoomSnapshot } from "./room.types";
+import type { Ack, ChatMessage, ChatReply, RoomRecord, RoomSnapshot } from "./room.types";
 import { parseYouTubeVideoId } from "./youtube";
 import {
   MAX_VOICE_PARTICIPANTS,
@@ -269,7 +269,7 @@ export class RoomGateway implements OnGatewayConnection, OnGatewayDisconnect {
   @SubscribeMessage("chat:send")
   sendChat(
     @ConnectedSocket() client: AuthedSocket,
-    @MessageBody() payload: { text?: unknown },
+    @MessageBody() payload: { text?: unknown; replyTo?: unknown },
   ): Ack<{ id: string }> {
     return this.safeSync(client, "chat", 6, 10_000, () => {
       const room = this.requireRoom(client);
@@ -277,12 +277,15 @@ export class RoomGateway implements OnGatewayConnection, OnGatewayDisconnect {
       if (!member) throw new Error("NOT_IN_ROOM");
       const text = typeof payload?.text === "string" ? payload.text.trim() : "";
       if (!text || text.length > 500) throw new Error("INVALID_MESSAGE");
-      const message = {
+      const replyTo = parseChatReply(payload?.replyTo);
+      if (payload?.replyTo !== undefined && !replyTo) throw new Error("INVALID_MESSAGE");
+      const message: ChatMessage = {
         id: randomUUID(),
         senderSessionId: client.data.sessionId,
         senderName: member.name,
         text,
         sentAt: Date.now(),
+        ...(replyTo ? { replyTo } : {}),
       };
       this.server.to(room.code).emit("chat:created", message);
       return { id: message.id };
@@ -438,4 +441,21 @@ export class RoomGateway implements OnGatewayConnection, OnGatewayDisconnect {
     };
     return { ok: false, error: { code, message: messages[code] ?? "Không thể thực hiện thao tác này." } };
   }
+}
+
+export function parseChatReply(value: unknown): ChatReply | undefined {
+  if (value === undefined || value === null) return undefined;
+  if (typeof value !== "object") return undefined;
+  const input = value as { messageId?: unknown; senderName?: unknown; text?: unknown };
+  const messageId = typeof input.messageId === "string" ? input.messageId.trim() : "";
+  const senderName = typeof input.senderName === "string" ? input.senderName.trim() : "";
+  const text = typeof input.text === "string" ? input.text.trim() : "";
+  if (
+    !messageId || messageId.length > 100 ||
+    !senderName || senderName.length > 50 ||
+    !text || text.length > 500
+  ) {
+    return undefined;
+  }
+  return { messageId, senderName, text };
 }

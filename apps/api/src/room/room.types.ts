@@ -54,6 +54,21 @@ export interface RoomSnapshot {
   serverTime: number;
 }
 
+export interface ChatReply {
+  messageId: string;
+  senderName: string;
+  text: string;
+}
+
+export interface ChatMessage {
+  id: string;
+  senderSessionId: string;
+  senderName: string;
+  text: string;
+  sentAt: number;
+  replyTo?: ChatReply;
+}
+
 export interface AckSuccess<T> {
   ok: true;
   data: T;

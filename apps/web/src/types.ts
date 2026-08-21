@@ -41,6 +41,13 @@ export interface ChatMessage {
   senderName: string;
   text: string;
   sentAt: number;
+  replyTo?: ChatReply;
+}
+
+export interface ChatReply {
+  messageId: string;
+  senderName: string;
+  text: string;
 }
 
 export interface YouTubeSearchResult {
