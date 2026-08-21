@@ -50,7 +50,7 @@ describe("YouTubeSearchService", () => {
     expect(String(fetchMock.mock.calls[0]?.[0])).toContain("videoEmbeddable=true");
   });
 
-  it("finds similar embeddable videos and caches them by source video", async () => {
+  it("returns the newest embeddable uploads from the source channel in playlist order", async () => {
     process.env.YOUTUBE_API_KEY = "test-key";
     const fetchMock = vi.fn()
       .mockResolvedValueOnce({
@@ -59,10 +59,9 @@ describe("YouTubeSearchService", () => {
         json: async () => ({
           items: [{
             snippet: {
-              title: "Một bài hát (Official Video)",
+              title: "Video hiện tại",
               channelTitle: "Ca sĩ",
-              categoryId: "10",
-              tags: ["nhạc chill", "acoustic", "official"],
+              channelId: "channel-1",
             },
           }],
         }),
@@ -71,30 +70,52 @@ describe("YouTubeSearchService", () => {
         ok: true,
         status: 200,
         json: async () => ({
+          items: [{ contentDetails: { relatedPlaylists: { uploads: "uploads-1" } } }],
+        }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: async () => ({
+          items: [
+            { contentDetails: { videoId: "dQw4w9WgXcQ" } },
+            { contentDetails: { videoId: "aaaaaaaaaaa" } },
+            { contentDetails: { videoId: "bbbbbbbbbbb" } },
+            { contentDetails: { videoId: "ccccccccccc" } },
+          ],
+        }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: async () => ({
           items: [
             {
-              id: { videoId: "dQw4w9WgXcQ" },
+              id: "ccccccccccc",
               snippet: {
-                title: "Video hiện tại",
+                title: "Video mới thứ ba",
                 channelTitle: "Ca sĩ",
-                thumbnails: { medium: { url: "https://i.ytimg.com/current.jpg" } },
+                thumbnails: { medium: { url: "https://i.ytimg.com/third.jpg" } },
               },
+              status: { embeddable: true, privacyStatus: "public" },
             },
             {
-              id: { videoId: "aaaaaaaaaaa" },
+              id: "aaaaaaaaaaa",
               snippet: {
-                title: "Bài hát tiếp theo",
-                channelTitle: "Ca sĩ khác",
-                thumbnails: { medium: { url: "https://i.ytimg.com/next.jpg" } },
+                title: "Video mới nhất",
+                channelTitle: "Ca sĩ",
+                thumbnails: { medium: { url: "https://i.ytimg.com/latest.jpg" } },
               },
+              status: { embeddable: true, privacyStatus: "public" },
             },
             {
-              id: { videoId: "aaaaaaaaaaa" },
+              id: "bbbbbbbbbbb",
               snippet: {
-                title: "Kết quả trùng",
-                channelTitle: "Ca sĩ khác",
-                thumbnails: { medium: { url: "https://i.ytimg.com/duplicate.jpg" } },
+                title: "Video không cho nhúng",
+                channelTitle: "Ca sĩ",
+                thumbnails: { medium: { url: "https://i.ytimg.com/blocked.jpg" } },
               },
+              status: { embeddable: false, privacyStatus: "public" },
             },
           ],
         }),
@@ -108,64 +129,61 @@ describe("YouTubeSearchService", () => {
     ]);
     const cached = await service.similar("dQw4w9WgXcQ");
 
-    expect(first).toEqual([{
-      videoId: "aaaaaaaaaaa",
-      title: "Bài hát tiếp theo",
-      channelTitle: "Ca sĩ khác",
-      thumbnailUrl: "https://i.ytimg.com/next.jpg",
-    }]);
+    expect(first).toEqual([
+      {
+        videoId: "aaaaaaaaaaa",
+        title: "Video mới nhất",
+        channelTitle: "Ca sĩ",
+        thumbnailUrl: "https://i.ytimg.com/latest.jpg",
+      },
+      {
+        videoId: "ccccccccccc",
+        title: "Video mới thứ ba",
+        channelTitle: "Ca sĩ",
+        thumbnailUrl: "https://i.ytimg.com/third.jpg",
+      },
+    ]);
     expect(simultaneous).toEqual(first);
     expect(cached).toEqual(first);
-    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(fetchMock).toHaveBeenCalledTimes(4);
     expect(String(fetchMock.mock.calls[0]?.[0])).toContain("/videos?");
-    expect(String(fetchMock.mock.calls[1]?.[0])).toContain("videoSyndicated=true");
-    expect(String(fetchMock.mock.calls[1]?.[0])).toContain("videoCategoryId=10");
-    expect(String(fetchMock.mock.calls[1]?.[0])).toContain("maxResults=24");
-    expect(String(fetchMock.mock.calls[1]?.[0])).toContain("nh%E1%BA%A1c+chill%7Cacoustic%7C");
-    expect(String(fetchMock.mock.calls[1]?.[0])).not.toContain("Official+Video");
+    expect(String(fetchMock.mock.calls[1]?.[0])).toContain("/channels?");
+    expect(String(fetchMock.mock.calls[1]?.[0])).toContain("part=contentDetails");
+    expect(String(fetchMock.mock.calls[2]?.[0])).toContain("/playlistItems?");
+    expect(String(fetchMock.mock.calls[2]?.[0])).toContain("playlistId=uploads-1");
+    expect(String(fetchMock.mock.calls[3]?.[0])).toContain("part=snippet%2Cstatus");
   });
 
-  it("drops near-duplicate titles and rotates results across channels", async () => {
+  it("validates pasted videos before they enter the queue and caches valid IDs", async () => {
     process.env.YOUTUBE_API_KEY = "test-key";
-    const result = (videoId: string, title: string, channelTitle: string) => ({
-      id: { videoId },
-      snippet: {
-        title,
-        channelTitle,
-        thumbnails: { medium: { url: `https://i.ytimg.com/${videoId}.jpg` } },
-      },
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({
+        items: [{ status: { embeddable: true, privacyStatus: "unlisted" } }],
+      }),
     });
-    const fetchMock = vi.fn()
-      .mockResolvedValueOnce({
-        ok: true,
-        status: 200,
-        json: async () => ({
-          items: [{ snippet: { title: "Một bài hát (Official Video)", categoryId: "10" } }],
-        }),
-      })
-      .mockResolvedValueOnce({
-        ok: true,
-        status: 200,
-        json: async () => ({
-          items: [
-            result("aaaaaaaaaaa", "Một bài hát lyrics", "Kênh A"),
-            result("bbbbbbbbbbb", "Acoustic cho buổi tối", "Kênh A"),
-            result("ccccccccccc", "Nhạc chill ngày mưa", "Kênh A"),
-            result("ddddddddddd", "Playlist thư giãn cuối tuần", "Kênh B"),
-            result("eeeeeeeeeee", "Live session trong quán nhỏ", "Kênh C"),
-          ],
-        }),
-      });
     vi.stubGlobal("fetch", fetchMock);
 
-    const items = await new YouTubeSearchService().similar("dQw4w9WgXcQ");
+    const service = new YouTubeSearchService();
+    await service.ensurePlayable("dQw4w9WgXcQ");
+    await service.ensurePlayable("dQw4w9WgXcQ");
 
-    expect(items.map((item) => item.videoId)).toEqual([
-      "bbbbbbbbbbb",
-      "ddddddddddd",
-      "eeeeeeeeeee",
-      "ccccccccccc",
-    ]);
-    expect(items.map((item) => item.videoId)).not.toContain("aaaaaaaaaaa");
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(String(fetchMock.mock.calls[0]?.[0])).toContain("part=status");
+  });
+
+  it("rejects private or non-embeddable pasted videos", async () => {
+    process.env.YOUTUBE_API_KEY = "test-key";
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({
+        items: [{ status: { embeddable: false, privacyStatus: "public" } }],
+      }),
+    }));
+
+    await expect(new YouTubeSearchService().ensurePlayable("dQw4w9WgXcQ"))
+      .rejects.toThrow("YOUTUBE_VIDEO_UNAVAILABLE");
   });
 });

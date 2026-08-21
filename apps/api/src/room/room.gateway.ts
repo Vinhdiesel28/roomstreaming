@@ -11,6 +11,7 @@ import { Inject } from "@nestjs/common";
 import { randomUUID } from "node:crypto";
 import type { Server, Socket } from "socket.io";
 import { SessionService } from "../session/session.service";
+import { YouTubeSearchService } from "../youtube/youtube-search.service";
 import { RateLimiter } from "./rate-limiter";
 import { RoomStore } from "./room.store";
 import type { Ack, ChatMessage, ChatReply, RoomRecord, RoomSnapshot } from "./room.types";
@@ -61,6 +62,8 @@ export class RoomGateway implements OnGatewayConnection, OnGatewayDisconnect {
     private readonly limiter: RateLimiter,
     @Inject(VoiceRegistry)
     private readonly voice: VoiceRegistry,
+    @Inject(YouTubeSearchService)
+    private readonly youtube: YouTubeSearchService,
   ) {}
 
   handleConnection(client: AuthedSocket) {
@@ -219,14 +222,15 @@ export class RoomGateway implements OnGatewayConnection, OnGatewayDisconnect {
   }
 
   @SubscribeMessage("queue:add")
-  addVideo(
+  async addVideo(
     @ConnectedSocket() client: AuthedSocket,
     @MessageBody() payload: { url?: unknown },
-  ): Ack<RoomSnapshot> {
-    return this.safeSync(client, "queue-add", 8, 30_000, () => {
+  ): Promise<Ack<RoomSnapshot>> {
+    return this.safe(client, "queue-add", 8, 30_000, async () => {
       const room = this.requireRoom(client);
       const videoId = parseYouTubeVideoId(payload?.url);
       if (!videoId) throw new Error("INVALID_YOUTUBE_URL");
+      await this.youtube.ensurePlayable(videoId);
       this.rooms.addVideo(room, client.data.sessionId, videoId);
       this.broadcastSnapshot(room);
       return this.rooms.snapshot(room, client.data.sessionId);
@@ -426,6 +430,10 @@ export class RoomGateway implements OnGatewayConnection, OnGatewayDisconnect {
       INVALID_NAME: "Tên cần từ 2 đến 32 ký tự.",
       INVALID_ROOM_CODE: "Mã phòng phải gồm 8 ký tự.",
       INVALID_YOUTUBE_URL: "Link YouTube không hợp lệ hoặc không được hỗ trợ.",
+      YOUTUBE_VIDEO_UNAVAILABLE: "Video không tồn tại, đang để riêng tư hoặc không cho phép phát trên web khác.",
+      YOUTUBE_API_KEY_MISSING: "Backend chưa được cấu hình YouTube API key.",
+      YOUTUBE_SEARCH_QUOTA: "YouTube API đã hết quota hôm nay. Hãy thử lại sau.",
+      YOUTUBE_SEARCH_UNAVAILABLE: "YouTube đang không phản hồi nên chưa thể kiểm tra link này.",
       QUEUE_FULL: "Hàng chờ đã đủ 50 video.",
       HOST_ONLY: "Chỉ Host mới điều khiển phát video.",
       FORBIDDEN: "Bạn không có quyền thực hiện thao tác này.",

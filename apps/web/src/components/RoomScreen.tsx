@@ -101,7 +101,7 @@ export function RoomScreen({
         if (cancelled) return;
         setSimilarResults(items);
         if (items.length === 0) {
-          setSimilarError("Chưa tìm thấy video tương tự có thể phát trong phòng.");
+          setSimilarError("Kênh này chưa có video mới nào có thể phát trong phòng.");
         }
       } catch (cause) {
         if (cancelled) return;
@@ -267,11 +267,12 @@ export function RoomScreen({
 
             {videoSource === "link" ? (
               <form className="add-video" onSubmit={addVideo}>
-                <label htmlFor="youtube-url">Link YouTube</label>
+                  <label htmlFor="youtube-url">Link YouTube hoặc video ID</label>
                 <div className="inline-field">
                   <input
                     id="youtube-url"
-                    type="url"
+                    type="text"
+                    inputMode="url"
                     value={videoUrl}
                     onChange={(event) => setVideoUrl(event.target.value)}
                     placeholder="https://youtu.be/…"
@@ -294,7 +295,7 @@ export function RoomScreen({
                   id="youtube-url-error"
                   role={error ? "alert" : undefined}
                 >
-                  {error ?? "Hỗ trợ link video, Shorts, Live và youtu.be."}
+                  {error ?? "Hỗ trợ link video, Shorts, Live, youtu.be và link không có https://."}
                 </p>
               </form>
             ) : (
@@ -464,8 +465,8 @@ export function RoomScreen({
           <section className="similar-panel" aria-labelledby="similar-title" aria-busy={similarBusy}>
             <div className="panel-heading panel-heading--compact">
               <div>
-                <h2 id="similar-title">Gợi ý xem tiếp</h2>
-                <p><ListVideo size={15} /> Dựa trên video đang phát</p>
+                <h2 id="similar-title">Video mới cùng kênh</h2>
+                <p><ListVideo size={15} /> Các video mới đăng từ tác giả này</p>
               </div>
               <span className="count-badge">{visibleSimilarResults.length}</span>
             </div>

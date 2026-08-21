@@ -21,19 +21,37 @@ interface YouTubeSearchResponse {
 
 interface YouTubeVideoResponse {
   items?: Array<{
+    id?: string;
     snippet?: {
       title?: string;
       channelTitle?: string;
-      categoryId?: string;
-      tags?: string[];
+      channelId?: string;
+      thumbnails?: Record<string, { url?: string }>;
+    };
+    status?: {
+      embeddable?: boolean;
+      privacyStatus?: string;
     };
   }>;
   error?: { message?: string };
 }
 
+interface YouTubeChannelResponse {
+  items?: Array<{
+    contentDetails?: { relatedPlaylists?: { uploads?: string } };
+  }>;
+  error?: { message?: string };
+}
+
+interface YouTubePlaylistItemsResponse {
+  items?: Array<{ contentDetails?: { videoId?: string } }>;
+  error?: { message?: string };
+}
+
 const VIDEO_ID_PATTERN = /^[A-Za-z0-9_-]{11}$/;
 const CACHE_TTL_MS = 5 * 60 * 1000;
-const SIMILAR_CACHE_TTL_MS = 6 * 60 * 60 * 1000;
+const SIMILAR_CACHE_TTL_MS = 15 * 60 * 1000;
+const PLAYABLE_CACHE_TTL_MS = 6 * 60 * 60 * 1000;
 const MAX_CACHE_ENTRIES = 100;
 
 @Injectable()
@@ -47,6 +65,7 @@ export class YouTubeSearchService {
     { expiresAt: number; items: YouTubeSearchResult[] }
   >();
   private readonly similarPending = new Map<string, Promise<YouTubeSearchResult[]>>();
+  private readonly playableCache = new Map<string, number>();
 
   async search(input: string): Promise<YouTubeSearchResult[]> {
     const query = input.trim().replace(/\s+/g, " ");
@@ -90,6 +109,22 @@ export class YouTubeSearchService {
     return request;
   }
 
+  async ensurePlayable(input: string): Promise<void> {
+    const videoId = input.trim();
+    if (!VIDEO_ID_PATTERN.test(videoId)) throw new Error("YOUTUBE_VIDEO_UNAVAILABLE");
+    const cachedUntil = this.playableCache.get(videoId) ?? 0;
+    if (cachedUntil > Date.now()) return;
+
+    const params = new URLSearchParams({ part: "status", id: videoId });
+    const payload = await this.request<YouTubeVideoResponse>("videos", params);
+    const status = payload.items?.[0]?.status;
+    if (!status?.embeddable || status.privacyStatus === "private") {
+      throw new Error("YOUTUBE_VIDEO_UNAVAILABLE");
+    }
+    trimCache(this.playableCache);
+    this.playableCache.set(videoId, Date.now() + PLAYABLE_CACHE_TTL_MS);
+  }
+
   private async loadSimilar(videoId: string): Promise<YouTubeSearchResult[]> {
     const videoParams = new URLSearchParams({
       part: "snippet",
@@ -97,24 +132,51 @@ export class YouTubeSearchService {
     });
     const videoPayload = await this.request<YouTubeVideoResponse>("videos", videoParams);
     const source = videoPayload.items?.[0]?.snippet;
-    if (!source?.title) throw new Error("YOUTUBE_VIDEO_NOT_FOUND");
+    if (!source?.channelId) throw new Error("YOUTUBE_VIDEO_NOT_FOUND");
 
-    const searchParams = new URLSearchParams({
-      part: "snippet",
-      type: "video",
-      videoEmbeddable: "true",
-      videoSyndicated: "true",
-      safeSearch: "moderate",
-      maxResults: "24",
-      relevanceLanguage: "vi",
-      q: buildSimilarQuery(source.title, source.tags),
+    const channelParams = new URLSearchParams({
+      part: "contentDetails",
+      id: source.channelId,
     });
-    if (source.categoryId) searchParams.set("videoCategoryId", source.categoryId);
+    const channelPayload = await this.request<YouTubeChannelResponse>("channels", channelParams);
+    const uploadsPlaylistId = channelPayload.items?.[0]?.contentDetails?.relatedPlaylists?.uploads;
+    if (!uploadsPlaylistId) return this.cacheSimilar(videoId, []);
 
-    const searchPayload = await this.request<YouTubeSearchResponse>("search", searchParams);
-    const candidates = mapSearchItems(searchPayload.items, new Set([videoId]));
-    const items = diversifyResults(candidates, source.title, 8);
+    const playlistParams = new URLSearchParams({
+      part: "contentDetails",
+      playlistId: uploadsPlaylistId,
+      maxResults: "16",
+    });
+    const playlistPayload = await this.request<YouTubePlaylistItemsResponse>(
+      "playlistItems",
+      playlistParams,
+    );
+    const seen = new Set([videoId]);
+    const newestVideoIds = (playlistPayload.items ?? []).flatMap((item) => {
+      const candidateId = item.contentDetails?.videoId;
+      if (!candidateId || !VIDEO_ID_PATTERN.test(candidateId) || seen.has(candidateId)) return [];
+      seen.add(candidateId);
+      return [candidateId];
+    });
+    if (newestVideoIds.length === 0) return this.cacheSimilar(videoId, []);
 
+    const latestParams = new URLSearchParams({
+      part: "snippet,status",
+      id: newestVideoIds.join(","),
+    });
+    const latestPayload = await this.request<YouTubeVideoResponse>("videos", latestParams);
+    const availableById = new Map(
+      mapVideoItems(latestPayload.items).map((item) => [item.videoId, item]),
+    );
+    const items = newestVideoIds.flatMap((id) => {
+      const item = availableById.get(id);
+      return item ? [item] : [];
+    }).slice(0, 8);
+
+    return this.cacheSimilar(videoId, items);
+  }
+
+  private cacheSimilar(videoId: string, items: YouTubeSearchResult[]) {
     trimCache(this.similarCache);
     this.similarCache.set(videoId, {
       expiresAt: Date.now() + SIMILAR_CACHE_TTL_MS,
@@ -124,7 +186,7 @@ export class YouTubeSearchService {
   }
 
   private async request<T extends { error?: { message?: string } }>(
-    resource: "search" | "videos",
+    resource: "search" | "videos" | "channels" | "playlistItems",
     params: URLSearchParams,
   ): Promise<T> {
     const apiKey = process.env.YOUTUBE_API_KEY?.trim();
@@ -150,6 +212,33 @@ export class YouTubeSearchService {
     }
     return payload;
   }
+}
+
+function mapVideoItems(source: YouTubeVideoResponse["items"] = []) {
+  return source.flatMap<YouTubeSearchResult>((item) => {
+    const videoId = item.id;
+    const snippet = item.snippet;
+    const thumbnailUrl =
+      snippet?.thumbnails?.medium?.url ??
+      snippet?.thumbnails?.high?.url ??
+      snippet?.thumbnails?.default?.url;
+    if (
+      !videoId ||
+      !VIDEO_ID_PATTERN.test(videoId) ||
+      !snippet?.title ||
+      !thumbnailUrl ||
+      !item.status?.embeddable ||
+      item.status.privacyStatus === "private"
+    ) {
+      return [];
+    }
+    return [{
+      videoId,
+      title: decodeHtml(snippet.title),
+      channelTitle: decodeHtml(snippet.channelTitle ?? "YouTube"),
+      thumbnailUrl,
+    }];
+  });
 }
 
 function mapSearchItems(
@@ -181,85 +270,6 @@ function mapSearchItems(
       thumbnailUrl,
     }];
   });
-}
-
-function buildSimilarQuery(title: string, tags: string[] = []) {
-  const cleanedTitle = cleanRecommendationText(decodeHtml(title));
-  const normalizedTitle = normalizeRecommendationText(cleanedTitle);
-  const usefulTags = Array.from(new Set(
-    tags
-      .map((tag) => cleanRecommendationText(decodeHtml(tag)))
-      .filter((tag) => tag.length >= 3 && tag.length <= 32)
-      .filter((tag) => !normalizedTitle.includes(normalizeRecommendationText(tag)))
-      .filter((tag) => !/^(music|video|official|youtube)$/i.test(tag)),
-  )).slice(0, 3);
-  const query = [...usefulTags, cleanedTitle].filter(Boolean).join("|");
-  return (query || decodeHtml(title)).slice(0, 100);
-}
-
-function cleanRecommendationText(value: string) {
-  return value
-    .replace(/[\[(](official (video|audio)|lyrics?|mv|4k)[\])]/gi, " ")
-    .replace(/\b(official video|official audio|lyrics?|mv|4k)\b/gi, " ")
-    .replace(/\s+/g, " ")
-    .trim();
-}
-
-function diversifyResults(
-  candidates: YouTubeSearchResult[],
-  sourceTitle: string,
-  limit: number,
-) {
-  const sourceTokens = recommendationTokens(sourceTitle);
-  const filtered = candidates.filter((item) => {
-    const candidateTokens = recommendationTokens(item.title);
-    if (candidateTokens.size === 0) return true;
-    const overlap = [...candidateTokens].filter((token) => sourceTokens.has(token)).length;
-    const similarity = overlap / Math.max(1, Math.min(sourceTokens.size, candidateTokens.size));
-    return similarity < 0.9;
-  });
-  const pool = filtered.length > 0 ? filtered : candidates;
-  const channels = new Map<string, YouTubeSearchResult[]>();
-  for (const item of pool) {
-    const key = normalizeRecommendationText(item.channelTitle) || item.channelTitle;
-    const bucket = channels.get(key) ?? [];
-    bucket.push(item);
-    channels.set(key, bucket);
-  }
-
-  const diversified: YouTubeSearchResult[] = [];
-  for (let round = 0; diversified.length < limit; round += 1) {
-    let added = false;
-    for (const bucket of channels.values()) {
-      const item = bucket[round];
-      if (!item) continue;
-      diversified.push(item);
-      added = true;
-      if (diversified.length === limit) break;
-    }
-    if (!added) break;
-  }
-  return diversified;
-}
-
-function recommendationTokens(value: string) {
-  const ignored = new Set(["official", "video", "audio", "lyrics", "lyric", "mv", "4k", "hd"]);
-  return new Set(
-    normalizeRecommendationText(cleanRecommendationText(decodeHtml(value)))
-      .split(" ")
-      .filter((token) => token.length >= 2 && !ignored.has(token)),
-  );
-}
-
-function normalizeRecommendationText(value: string) {
-  return value
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .toLocaleLowerCase("vi-VN")
-    .replace(/đ/g, "d")
-    .replace(/[^a-z0-9]+/g, " ")
-    .replace(/\s+/g, " ")
-    .trim();
 }
 
 function trimCache(cache: Map<string, unknown>) {
