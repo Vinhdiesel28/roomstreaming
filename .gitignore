@@ -1,0 +1,13 @@
+node_modules/
+.npm-cache/
+dist/
+.env
+.env.*
+!.env.example
+coverage/
+*.log
+.DS_Store
+tmp/
+.agents/
+.hallmark/
+skills-lock.json

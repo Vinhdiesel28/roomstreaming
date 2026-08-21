@@ -1,0 +1,22 @@
+{
+  "name": "roomstreaming",
+  "version": "0.1.0",
+  "private": true,
+  "workspaces": [
+    "apps/*"
+  ],
+  "scripts": {
+    "dev": "concurrently -n api,web -c yellow,cyan \"npm run dev -w @roomstreaming/api\" \"npm run dev -w @roomstreaming/web\"",
+    "build": "npm run build -w @roomstreaming/api && npm run build -w @roomstreaming/web",
+    "test": "npm run test -w @roomstreaming/api && npm run test -w @roomstreaming/web",
+    "test:voice": "node scripts/voice-smoke.mjs",
+    "typecheck": "npm run typecheck -w @roomstreaming/api && npm run typecheck -w @roomstreaming/web",
+    "start": "npm run start -w @roomstreaming/api"
+  },
+  "devDependencies": {
+    "concurrently": "^9.2.1"
+  },
+  "engines": {
+    "node": ">=22"
+  }
+}
