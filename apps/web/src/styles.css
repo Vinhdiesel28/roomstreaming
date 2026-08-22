@@ -1,5 +1,5 @@
 /* Hallmark · genre: playful · macrostructure: Split Studio · theme: Hum · tone: friendly-utilitarian · anchor hue: pear · enrichment: none · nav: N7 Brutal slab · footer: Ft8 Marquee scroll */
-/* Hallmark · pre-emit critique: P5 H5 E4 S5 R5 V4 · mobile-app: video + chat tray */
+/* Hallmark · pre-emit critique: P5 H5 E5 S5 R5 V4 · complete action shelf + voice in chat */
 @import "../../../tokens.css";
 
 *,
@@ -894,6 +894,71 @@ input[aria-invalid="true"] {
 .chat-panel .chat-log {
   min-height: 0;
   max-height: none;
+}
+
+.chat-panel > .voice-card {
+  grid-area: auto;
+  flex: 0 0 auto;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: var(--space-xs);
+  margin-block-end: var(--space-xs);
+  padding: 0 0 var(--space-sm);
+  border: 0;
+  border-block-end: var(--rule-thin) solid var(--color-rule);
+  border-radius: 0;
+  background: transparent;
+}
+
+.chat-panel > .voice-card .voice-card__heading {
+  min-width: 0;
+  align-items: center;
+  margin-block-end: 0;
+}
+
+.chat-panel > .voice-card .voice-card__heading > div {
+  min-width: 0;
+}
+
+.chat-panel > .voice-card .voice-card__heading p {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.chat-panel > .voice-card .voice-join {
+  width: auto;
+}
+
+.chat-panel > .voice-card .voice-controls,
+.chat-panel > .voice-card .voice-participants,
+.chat-panel > .voice-card .voice-empty,
+.chat-panel > .voice-card .voice-error {
+  grid-column: 1 / -1;
+}
+
+.chat-panel > .voice-card .voice-controls {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.chat-panel > .voice-card .voice-participants {
+  display: flex;
+  gap: var(--space-xs);
+  margin-block-start: 0;
+  overflow-x: auto;
+  scrollbar-width: thin;
+}
+
+.chat-panel > .voice-card .voice-participants li {
+  min-width: min(14rem, 100%);
+  flex: 0 0 auto;
+}
+
+.chat-panel > .voice-card .voice-empty,
+.chat-panel > .voice-card .voice-error {
+  margin-block-start: 0;
 }
 
 .panel-heading {
@@ -1833,15 +1898,18 @@ input[aria-invalid="true"] {
   }
 
   .room-grid {
-    grid-template-columns: minmax(0, 1.9fr) minmax(18rem, 0.75fr);
+    grid-template-columns: minmax(0, 1.05fr) minmax(0, 0.95fr) minmax(18rem, 0.9fr);
     grid-template-areas:
-      "picker picker"
-      "video chat"
-      "meta ."
-      "voice voice"
-      "similar queue"
-      "members members";
+      "video video chat"
+      "meta meta ."
+      "picker similar queue"
+      "voice voice voice"
+      "members members members";
     align-items: stretch;
+  }
+
+  .video-picker__body {
+    grid-template-columns: minmax(0, 1fr);
   }
 
   .video-stage {
@@ -1856,11 +1924,13 @@ input[aria-invalid="true"] {
     grid-template-columns: repeat(auto-fit, minmax(10rem, 1fr));
   }
 
-  .chat-panel {
+  .chat-panel,
+  .chat-panel.is-mobile-open,
+  .chat-panel.is-mobile-closed {
     position: static;
     inset: auto;
-    height: 0;
-    min-height: 100%;
+    height: auto;
+    min-height: 0;
     padding-block-end: var(--space-md);
     border-radius: var(--radius-card);
     overflow: hidden;
@@ -1883,14 +1953,13 @@ input[aria-invalid="true"] {
 
 @media (min-width: 80rem) {
   .room-grid {
-    grid-template-columns: minmax(0, 2fr) minmax(20rem, 0.72fr);
+    grid-template-columns: minmax(0, 1.08fr) minmax(0, 0.97fr) minmax(20rem, 0.88fr);
     grid-template-areas:
-      "picker picker"
-      "video chat"
-      "meta ."
-      "voice voice"
-      "similar queue"
-      "members members";
+      "video video chat"
+      "meta meta ."
+      "picker similar queue"
+      "voice voice voice"
+      "members members members";
   }
 
   .search-results {

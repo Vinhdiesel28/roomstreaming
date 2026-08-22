@@ -80,8 +80,9 @@ describe("RoomScreen layout", () => {
     const picker = html.indexOf('class="video-picker"');
     const video = html.indexOf('class="video-stage"');
     const meta = html.indexOf('class="video-meta"');
-    const chat = html.indexOf('class="chat-panel ');
+    const chat = html.indexOf('class="chat-panel"');
     const voice = html.indexOf('class="voice-card"');
+    const chatLog = html.indexOf('class="chat-log"');
     const queue = html.indexOf('class="queue-panel"');
     const members = html.indexOf('class="members-panel"');
 
@@ -90,14 +91,17 @@ describe("RoomScreen layout", () => {
     expect(video).toBeLessThan(meta);
     expect(meta).toBeLessThan(chat);
     expect(chat).toBeLessThan(voice);
-    expect(voice).toBeLessThan(queue);
+    expect(voice).toBeLessThan(chatLog);
+    expect(chatLog).toBeLessThan(queue);
     expect(queue).toBeLessThan(members);
     expect(html).toContain('id="youtube-search"');
     expect(html).toContain('class="mobile-chat-toggle"');
     expect(html).toContain('aria-controls="room-chat"');
+    expect(html).toContain('class="chat-panel"');
+    expect(html).not.toContain('class="chat-panel is-mobile-closed"');
   });
 
-  it("does not require a manual suggestion trigger when a video is playing", () => {
+  it("keeps the same-channel panel visible while suggestions load", () => {
     const html = renderToStaticMarkup(
       <RoomScreen
         snapshot={{
@@ -123,8 +127,8 @@ describe("RoomScreen layout", () => {
       />,
     );
 
-    expect(html).not.toContain("Video tương tự");
-    expect(html).not.toContain('id="similar-title"');
+    expect(html).toContain("Video mới cùng kênh");
+    expect(html).toContain('id="similar-title"');
   });
 
   it("renders messages as reply targets and shows quoted messages", () => {

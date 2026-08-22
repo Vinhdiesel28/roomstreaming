@@ -505,7 +505,7 @@ export function RoomScreen({
         </div>
 
         <section
-          className={`chat-panel ${chatOpen ? "is-mobile-open" : "is-mobile-closed"}`}
+          className={`chat-panel${isCompactLayout ? ` ${chatOpen ? "is-mobile-open" : "is-mobile-closed"}` : ""}`}
           id="room-chat"
           aria-hidden={isCompactLayout && !chatOpen}
           inert={isCompactLayout && !chatOpen ? true : undefined}
@@ -521,6 +521,7 @@ export function RoomScreen({
               <X size={19} />
             </button>
           </div>
+          <VoiceChat socket={socket} connected={connected} />
           <div className="chat-log" aria-live="polite">
             {messages.length === 0 ? (
               <div className="chat-empty"><MessageCircle size={22} /><p>nói chi bây giờ , ù húuuu</p></div>
@@ -601,44 +602,45 @@ export function RoomScreen({
           )}
         </button>
 
-        {(similarBusy || similarError || similarResults.length > 0) && (
-          <section className="similar-panel" aria-labelledby="similar-title" aria-busy={similarBusy}>
-            <div className="panel-heading panel-heading--compact">
-              <div>
-                <h2 id="similar-title">Video mới cùng kênh</h2>
-                <p><ListVideo size={15} /> Các video mới đăng từ tác giả này</p>
-              </div>
-              <span className="count-badge">{visibleSimilarResults.length}</span>
+        <section className="similar-panel" aria-labelledby="similar-title" aria-busy={similarBusy}>
+          <div className="panel-heading panel-heading--compact">
+            <div>
+              <h2 id="similar-title">Video mới cùng kênh</h2>
+              <p><ListVideo size={15} /> Các video mới đăng từ tác giả này</p>
             </div>
-            {similarBusy && (
-              <p className="similar-status" role="status">
-                <LoaderCircle className="spin" size={18} /> Đang tìm video phù hợp…
-              </p>
-            )}
-            {similarError && <p className="field-helper is-error" role="alert">{similarError}</p>}
-            {!similarBusy && !similarError && visibleSimilarResults.length === 0 && (
-              <p className="similar-status">Các gợi ý đã nằm trong hàng chờ.</p>
-            )}
-            <ul className="search-results similar-results">
-              {visibleSimilarResults.map((result) => {
-                const isAdding = addingVideoId === result.videoId;
-                const isAdded = addedVideoId === result.videoId;
-                const isFailed = failedVideoId === result.videoId;
-                return (
-                  <VideoResultRow
-                    key={result.videoId}
-                    result={result}
-                    state={isAdding ? "loading" : isAdded ? "success" : isFailed ? "error" : "idle"}
-                    disabled={Boolean(addingVideoId) || isAdded}
-                    onAdd={() => void addSimilarResult(result)}
-                  />
-                );
-              })}
-            </ul>
-          </section>
-        )}
-
-        <VoiceChat socket={socket} connected={connected} />
+            <span className="count-badge">{visibleSimilarResults.length}</span>
+          </div>
+          {!snapshot.currentVideo && (
+            <p className="similar-status">Phát một video để xem các video mới từ cùng kênh.</p>
+          )}
+          {snapshot.currentVideo && similarBusy && (
+            <p className="similar-status" role="status">
+              <LoaderCircle className="spin" size={18} /> Đang tìm video phù hợp…
+            </p>
+          )}
+          {snapshot.currentVideo && similarError && (
+            <p className="field-helper is-error" role="alert">{similarError}</p>
+          )}
+          {snapshot.currentVideo && !similarBusy && !similarError && visibleSimilarResults.length === 0 && (
+            <p className="similar-status">Các gợi ý đã nằm trong hàng chờ.</p>
+          )}
+          <ul className="search-results similar-results">
+            {visibleSimilarResults.map((result) => {
+              const isAdding = addingVideoId === result.videoId;
+              const isAdded = addedVideoId === result.videoId;
+              const isFailed = failedVideoId === result.videoId;
+              return (
+                <VideoResultRow
+                  key={result.videoId}
+                  result={result}
+                  state={isAdding ? "loading" : isAdded ? "success" : isFailed ? "error" : "idle"}
+                  disabled={Boolean(addingVideoId) || isAdded}
+                  onAdd={() => void addSimilarResult(result)}
+                />
+              );
+            })}
+          </ul>
+        </section>
 
         <aside className="queue-panel">
           <div className="panel-heading">

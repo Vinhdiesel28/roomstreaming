@@ -16,6 +16,7 @@ export function YouTubePlayer({ playback, isHost, onCommand }: Props) {
   const playbackRef = useRef(playback);
   const isHostRef = useRef(isHost);
   const applyingRef = useRef(false);
+  const applyingTimerRef = useRef<number | null>(null);
   const lastVersionRef = useRef(-1);
   const lastVideoIdRef = useRef<string | null>(null);
   const [blocked, setBlocked] = useState(false);
@@ -24,29 +25,55 @@ export function YouTubePlayer({ playback, isHost, onCommand }: Props) {
   playbackRef.current = playback;
   isHostRef.current = isHost;
 
+  const markApplying = useCallback(() => {
+    applyingRef.current = true;
+    if (applyingTimerRef.current !== null) window.clearTimeout(applyingTimerRef.current);
+    applyingTimerRef.current = window.setTimeout(() => {
+      applyingRef.current = false;
+      applyingTimerRef.current = null;
+    }, 750);
+  }, []);
+
   const applyPlayback = useCallback((next: Playback, forceLoad = false, forceSeek = false) => {
     const player = playerRef.current;
     if (!player || !playerReadyRef.current) return;
-    applyingRef.current = true;
     const position = expectedPosition(next);
     const changedVideo = forceLoad || lastVideoIdRef.current !== next.videoId;
+    const playerState = player.getPlayerState();
+    let shouldMarkApplying = changedVideo;
     setError(null);
     setBlocked(false);
     if (changedVideo) {
+      markApplying();
       if (next.state === "playing") player.loadVideoById(next.videoId, position);
       else player.cueVideoById(next.videoId, position);
     } else {
       const drift = Math.abs(player.getCurrentTime() - position);
-      if (forceSeek || drift > 1.5) player.seekTo(position, true);
-      if (next.state === "playing") player.playVideo();
-      else player.pauseVideo();
+      const isBuffering = playerState === YT.PlayerState.BUFFERING;
+      if (forceSeek || (!isBuffering && drift > 4)) {
+        shouldMarkApplying = true;
+        player.seekTo(position, true);
+      }
+      if (
+        next.state === "playing"
+        && playerState !== YT.PlayerState.PLAYING
+        && playerState !== YT.PlayerState.BUFFERING
+      ) {
+        shouldMarkApplying = true;
+        player.playVideo();
+      }
+      if (
+        next.state === "paused"
+        && (playerState === YT.PlayerState.PLAYING || playerState === YT.PlayerState.BUFFERING)
+      ) {
+        shouldMarkApplying = true;
+        player.pauseVideo();
+      }
+      if (shouldMarkApplying) markApplying();
     }
     lastVideoIdRef.current = next.videoId;
     lastVersionRef.current = next.version;
-    window.setTimeout(() => {
-      applyingRef.current = false;
-    }, 450);
-  }, []);
+  }, [markApplying]);
 
   useEffect(() => {
     if (!mountRef.current) return;
@@ -71,8 +98,14 @@ export function YouTubePlayer({ playback, isHost, onCommand }: Props) {
           onStateChange: (event) => {
             if (!isHostRef.current || applyingRef.current) return;
             const position = event.target.getCurrentTime();
-            if (event.data === YT.PlayerState.PLAYING) void onCommand("PLAY", position);
-            if (event.data === YT.PlayerState.PAUSED) void onCommand("PAUSE", position);
+            const current = playbackRef.current;
+            const drift = current ? Math.abs(expectedPosition(current) - position) : Number.POSITIVE_INFINITY;
+            if (event.data === YT.PlayerState.PLAYING && (current?.state !== "playing" || drift > 2)) {
+              void onCommand("PLAY", position);
+            }
+            if (event.data === YT.PlayerState.PAUSED && (current?.state !== "paused" || drift > 2)) {
+              void onCommand("PAUSE", position);
+            }
             if (event.data === YT.PlayerState.ENDED) void onCommand("NEXT", 0);
           },
           onError: () => setError("Video này không thể phát nhúng. Hãy thử video khác."),
@@ -82,6 +115,7 @@ export function YouTubePlayer({ playback, isHost, onCommand }: Props) {
     });
     return () => {
       disposed = true;
+      if (applyingTimerRef.current !== null) window.clearTimeout(applyingTimerRef.current);
       playerReadyRef.current = false;
       playerRef.current?.destroy();
       playerRef.current = null;
@@ -92,33 +126,31 @@ export function YouTubePlayer({ playback, isHost, onCommand }: Props) {
     const player = playerRef.current;
     if (!player || !playerReadyRef.current) return;
     if (!playback) {
-      applyingRef.current = true;
+      markApplying();
       player.stopVideo();
       lastVideoIdRef.current = null;
       lastVersionRef.current = -1;
-      window.setTimeout(() => {
-        applyingRef.current = false;
-      }, 450);
       return;
     }
     const changedVideo = lastVideoIdRef.current !== playback.videoId;
+    const changedVersion = playback.version !== lastVersionRef.current;
     applyPlayback(
       playback,
       changedVideo,
-      changedVideo || playback.version !== lastVersionRef.current,
+      changedVideo || (!isHostRef.current && changedVersion),
     );
-  }, [applyPlayback, playback]);
+  }, [applyPlayback, markApplying, playback]);
 
   useEffect(() => {
-    if (!playback) return;
+    if (!playback || isHost) return;
     const timer = window.setInterval(
       () => applyPlayback(playbackRef.current ?? playback, false, false),
-      5_000,
+      10_000,
     );
     return () => {
       window.clearInterval(timer);
     };
-  }, [applyPlayback, playback]);
+  }, [applyPlayback, isHost, playback]);
 
   return (
     <div className={`player-wrap ${playback ? "" : "is-empty"}`}>
