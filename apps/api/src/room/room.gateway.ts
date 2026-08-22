@@ -230,8 +230,22 @@ export class RoomGateway implements OnGatewayConnection, OnGatewayDisconnect {
       const room = this.requireRoom(client);
       const videoId = parseYouTubeVideoId(payload?.url);
       if (!videoId) throw new Error("INVALID_YOUTUBE_URL");
-      await this.youtube.ensurePlayable(videoId);
-      this.rooms.addVideo(room, client.data.sessionId, videoId);
+      const video = await this.youtube.ensurePlayable(videoId);
+      this.rooms.addVideo(room, client.data.sessionId, video);
+      this.broadcastSnapshot(room);
+      return this.rooms.snapshot(room, client.data.sessionId);
+    });
+  }
+
+  @SubscribeMessage("queue:play")
+  playQueuedVideo(
+    @ConnectedSocket() client: AuthedSocket,
+    @MessageBody() payload: { itemId?: unknown },
+  ): Ack<RoomSnapshot> {
+    return this.safeSync(client, "queue-play", 10, 30_000, () => {
+      const room = this.requireRoom(client);
+      const itemId = typeof payload?.itemId === "string" ? payload.itemId : "";
+      this.rooms.playVideoNow(room, client.data.sessionId, itemId);
       this.broadcastSnapshot(room);
       return this.rooms.snapshot(room, client.data.sessionId);
     });
@@ -435,6 +449,7 @@ export class RoomGateway implements OnGatewayConnection, OnGatewayDisconnect {
       YOUTUBE_SEARCH_QUOTA: "YouTube API đã hết quota hôm nay. Hãy thử lại sau.",
       YOUTUBE_SEARCH_UNAVAILABLE: "YouTube đang không phản hồi nên chưa thể kiểm tra link này.",
       QUEUE_FULL: "Hàng chờ đã đủ 50 video.",
+      QUEUE_ITEM_NOT_FOUND: "Video không còn trong hàng chờ.",
       HOST_ONLY: "Chỉ Host mới điều khiển phát video.",
       FORBIDDEN: "Bạn không có quyền thực hiện thao tác này.",
       RATE_LIMITED: "Bạn thao tác quá nhanh. Chờ một chút rồi thử lại.",

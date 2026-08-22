@@ -65,7 +65,10 @@ export class YouTubeSearchService {
     { expiresAt: number; items: YouTubeSearchResult[] }
   >();
   private readonly similarPending = new Map<string, Promise<YouTubeSearchResult[]>>();
-  private readonly playableCache = new Map<string, number>();
+  private readonly playableCache = new Map<
+    string,
+    { expiresAt: number; item: YouTubeSearchResult }
+  >();
 
   async search(input: string): Promise<YouTubeSearchResult[]> {
     const query = input.trim().replace(/\s+/g, " ");
@@ -109,20 +112,22 @@ export class YouTubeSearchService {
     return request;
   }
 
-  async ensurePlayable(input: string): Promise<void> {
+  async ensurePlayable(input: string): Promise<YouTubeSearchResult> {
     const videoId = input.trim();
     if (!VIDEO_ID_PATTERN.test(videoId)) throw new Error("YOUTUBE_VIDEO_UNAVAILABLE");
-    const cachedUntil = this.playableCache.get(videoId) ?? 0;
-    if (cachedUntil > Date.now()) return;
+    const cached = this.playableCache.get(videoId);
+    if (cached && cached.expiresAt > Date.now()) return cached.item;
 
-    const params = new URLSearchParams({ part: "status", id: videoId });
+    const params = new URLSearchParams({ part: "snippet,status", id: videoId });
     const payload = await this.request<YouTubeVideoResponse>("videos", params);
-    const status = payload.items?.[0]?.status;
-    if (!status?.embeddable || status.privacyStatus === "private") {
-      throw new Error("YOUTUBE_VIDEO_UNAVAILABLE");
-    }
+    const item = mapVideoItems(payload.items)[0];
+    if (!item) throw new Error("YOUTUBE_VIDEO_UNAVAILABLE");
     trimCache(this.playableCache);
-    this.playableCache.set(videoId, Date.now() + PLAYABLE_CACHE_TTL_MS);
+    this.playableCache.set(videoId, {
+      expiresAt: Date.now() + PLAYABLE_CACHE_TTL_MS,
+      item,
+    });
+    return item;
   }
 
   private async loadSimilar(videoId: string): Promise<YouTubeSearchResult[]> {

@@ -20,8 +20,8 @@ describe("RoomStore", () => {
   it("keeps chat out of the room state and advances the queue", () => {
     const room = store.create("host", "Minh");
     store.join(room.code, "host", "socket-1", "Minh");
-    store.addVideo(room, "host", "dQw4w9WgXcQ");
-    store.addVideo(room, "host", "9bZkp7q19f0");
+    store.addVideo(room, "host", video("dQw4w9WgXcQ", "Video đầu"));
+    store.addVideo(room, "host", video("9bZkp7q19f0", "Video tiếp"));
     expect(room.currentVideo?.videoId).toBe("dQw4w9WgXcQ");
     expect(room.queue).toHaveLength(1);
     expect(room).not.toHaveProperty("messages");
@@ -29,4 +29,29 @@ describe("RoomStore", () => {
     expect(room.currentVideo?.videoId).toBe("9bZkp7q19f0");
     expect(room.queue).toHaveLength(0);
   });
+
+  it("lets the host play any queued video immediately", () => {
+    const room = store.create("host", "Minh");
+    store.join(room.code, "host", "socket-1", "Minh");
+    store.addVideo(room, "host", video("dQw4w9WgXcQ", "Video đầu"));
+    store.addVideo(room, "host", video("aaaaaaaaaaa", "Video thứ hai"));
+    store.addVideo(room, "host", video("bbbbbbbbbbb", "Video thứ ba"));
+
+    const item = room.queue[1];
+    expect(item).toBeDefined();
+    store.playVideoNow(room, "host", item!.itemId);
+
+    expect(room.currentVideo?.videoId).toBe("bbbbbbbbbbb");
+    expect(room.currentVideo?.state).toBe("playing");
+    expect(room.queue.map((queued) => queued.videoId)).toEqual(["aaaaaaaaaaa"]);
+  });
 });
+
+function video(videoId: string, title: string) {
+  return {
+    videoId,
+    title,
+    channelTitle: "Kênh thử nghiệm",
+    thumbnailUrl: `https://i.ytimg.com/vi/${videoId}/mqdefault.jpg`,
+  };
+}

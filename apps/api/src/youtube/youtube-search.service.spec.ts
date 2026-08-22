@@ -160,17 +160,27 @@ describe("YouTubeSearchService", () => {
       ok: true,
       status: 200,
       json: async () => ({
-        items: [{ status: { embeddable: true, privacyStatus: "unlisted" } }],
+        items: [{
+          id: "dQw4w9WgXcQ",
+          snippet: {
+            title: "Video thử nghiệm",
+            channelTitle: "Kênh thử nghiệm",
+            thumbnails: { medium: { url: "https://i.ytimg.com/test.jpg" } },
+          },
+          status: { embeddable: true, privacyStatus: "unlisted" },
+        }],
       }),
     });
     vi.stubGlobal("fetch", fetchMock);
 
     const service = new YouTubeSearchService();
-    await service.ensurePlayable("dQw4w9WgXcQ");
-    await service.ensurePlayable("dQw4w9WgXcQ");
+    const first = await service.ensurePlayable("dQw4w9WgXcQ");
+    const cached = await service.ensurePlayable("dQw4w9WgXcQ");
 
     expect(fetchMock).toHaveBeenCalledTimes(1);
-    expect(String(fetchMock.mock.calls[0]?.[0])).toContain("part=status");
+    expect(String(fetchMock.mock.calls[0]?.[0])).toContain("part=snippet%2Cstatus");
+    expect(first.title).toBe("Video thử nghiệm");
+    expect(cached).toEqual(first);
   });
 
   it("rejects private or non-embeddable pasted videos", async () => {
@@ -179,7 +189,15 @@ describe("YouTubeSearchService", () => {
       ok: true,
       status: 200,
       json: async () => ({
-        items: [{ status: { embeddable: false, privacyStatus: "public" } }],
+        items: [{
+          id: "dQw4w9WgXcQ",
+          snippet: {
+            title: "Video bị chặn",
+            channelTitle: "Kênh thử nghiệm",
+            thumbnails: { medium: { url: "https://i.ytimg.com/test.jpg" } },
+          },
+          status: { embeddable: false, privacyStatus: "public" },
+        }],
       }),
     }));
 

@@ -12,6 +12,7 @@ import {
   Search,
   Send,
   SkipForward,
+  Sun,
   Trash2,
   UserRound,
   Users,
@@ -19,6 +20,7 @@ import {
 } from "lucide-react";
 import { FormEvent, useEffect, useRef, useState } from "react";
 import type { Socket } from "socket.io-client";
+import { useScreenWakeLock } from "../hooks/useScreenWakeLock";
 import { getSimilarYouTubeVideos, searchYouTube } from "../lib/api";
 import type {
   ChatMessage,
@@ -39,6 +41,7 @@ interface Props {
   onLeave: () => Promise<void>;
   onAddVideo: (url: string) => Promise<unknown>;
   onRemoveVideo: (itemId: string) => Promise<unknown>;
+  onPlayVideo: (itemId: string) => Promise<unknown>;
   onCommand: (action: PlaybackCommand, positionSec?: number) => Promise<unknown>;
   onSendChat: (text: string, replyTo?: ChatReply) => Promise<unknown>;
 }
@@ -108,6 +111,7 @@ export function RoomScreen({
   onLeave,
   onAddVideo,
   onRemoveVideo,
+  onPlayVideo,
   onCommand,
   onSendChat,
 }: Props) {
@@ -126,14 +130,47 @@ export function RoomScreen({
   const [chat, setChat] = useState("");
   const [replyingTo, setReplyingTo] = useState<ChatMessage | null>(null);
   const [busy, setBusy] = useState(false);
+  const [queueBusyItemId, setQueueBusyItemId] = useState<string | null>(null);
+  const [skipBusy, setSkipBusy] = useState(false);
+  const [queueError, setQueueError] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
+  const [chatOpen, setChatOpen] = useState(false);
+  const [isCompactLayout, setIsCompactLayout] = useState(() =>
+    typeof window.matchMedia === "function" && window.matchMedia("(max-width: 59.999rem)").matches,
+  );
+  const [lastReadMessageCount, setLastReadMessageCount] = useState(messages.length);
   const chatEndRef = useRef<HTMLDivElement>(null);
   const chatInputRef = useRef<HTMLInputElement>(null);
+  const wakeLockStatus = useScreenWakeLock(snapshot.currentVideo?.state === "playing");
+  const unreadMessageCount = Math.max(0, messages.length - lastReadMessageCount);
 
   useEffect(() => {
-    chatEndRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest" });
-  }, [messages]);
+    if (typeof window.matchMedia !== "function") return;
+    const media = window.matchMedia("(max-width: 59.999rem)");
+    const update = () => setIsCompactLayout(media.matches);
+    update();
+    media.addEventListener("change", update);
+    return () => media.removeEventListener("change", update);
+  }, []);
+
+  useEffect(() => {
+    if (chatOpen || !isCompactLayout) setLastReadMessageCount(messages.length);
+  }, [chatOpen, isCompactLayout, messages.length]);
+
+  useEffect(() => {
+    if (!chatOpen || !isCompactLayout) return;
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setChatOpen(false);
+    };
+    window.addEventListener("keydown", closeOnEscape);
+    return () => window.removeEventListener("keydown", closeOnEscape);
+  }, [chatOpen, isCompactLayout]);
+
+  useEffect(() => {
+    if (isCompactLayout && !chatOpen) return;
+    chatEndRef.current?.scrollIntoView?.({ behavior: "smooth", block: "nearest" });
+  }, [chatOpen, isCompactLayout, messages]);
 
   useEffect(() => {
     let cancelled = false;
@@ -269,6 +306,34 @@ export function RoomScreen({
     await navigator.clipboard.writeText(`${window.location.origin}/room/${snapshot.roomCode}`);
     setCopied(true);
     window.setTimeout(() => setCopied(false), 2_500);
+  };
+
+  const runQueueAction = async (
+    itemId: string,
+    action: (itemId: string) => Promise<unknown>,
+    fallbackMessage: string,
+  ) => {
+    setQueueBusyItemId(itemId);
+    setQueueError(null);
+    try {
+      await action(itemId);
+    } catch (cause) {
+      setQueueError(cause instanceof Error ? cause.message : fallbackMessage);
+    } finally {
+      setQueueBusyItemId(null);
+    }
+  };
+
+  const skipCurrentVideo = async () => {
+    setSkipBusy(true);
+    setQueueError(null);
+    try {
+      await onCommand("NEXT", 0);
+    } catch (cause) {
+      setQueueError(cause instanceof Error ? cause.message : "Không bỏ qua được video.");
+    } finally {
+      setSkipBusy(false);
+    }
   };
 
   const queuedVideoIds = new Set(snapshot.queue.map((item) => item.videoId));
@@ -427,18 +492,34 @@ export function RoomScreen({
           <span className="role-line">
             {snapshot.isHost ? <><Crown size={16} /> Bạn là Host</> : <><UserRound size={16} /> Host đang giữ nhịp</>}
           </span>
+          {wakeLockStatus === "active" && (
+            <span className="wake-lock-status"><Sun size={15} /> Màn hình luôn sáng</span>
+          )}
           {snapshot.isHost && snapshot.currentVideo && (
             <div className="video-meta__actions">
-              <button className="btn btn--soft btn--small" type="button" onClick={() => void onCommand("NEXT", 0)}>
-                <SkipForward size={17} /> Video tiếp
+              <button className="btn btn--soft btn--small" type="button" disabled={skipBusy} onClick={() => void skipCurrentVideo()}>
+                {skipBusy ? <LoaderCircle className="spin" size={17} /> : <SkipForward size={17} />} Bỏ qua
               </button>
             </div>
           )}
         </div>
 
-        <section className="chat-panel">
+        <section
+          className={`chat-panel ${chatOpen ? "is-mobile-open" : "is-mobile-closed"}`}
+          id="room-chat"
+          aria-hidden={isCompactLayout && !chatOpen}
+          inert={isCompactLayout && !chatOpen ? true : undefined}
+        >
           <div className="panel-heading panel-heading--compact">
             <div><h2>Trò chuyện</h2></div>
+            <button
+              className="icon-action mobile-chat-close"
+              type="button"
+              onClick={() => setChatOpen(false)}
+              aria-label="Đóng trò chuyện"
+            >
+              <X size={19} />
+            </button>
           </div>
           <div className="chat-log" aria-live="polite">
             {messages.length === 0 ? (
@@ -505,6 +586,21 @@ export function RoomScreen({
           </form>
         </section>
 
+        <button
+          className="mobile-chat-toggle"
+          type="button"
+          onClick={() => setChatOpen(true)}
+          aria-controls="room-chat"
+          aria-expanded={chatOpen}
+          aria-label={unreadMessageCount > 0 ? `Mở trò chuyện, ${unreadMessageCount} tin nhắn mới` : "Mở trò chuyện"}
+        >
+          <MessageCircle size={22} />
+          <span>Trò chuyện</span>
+          {unreadMessageCount > 0 && (
+            <strong aria-hidden="true">{Math.min(unreadMessageCount, 99)}</strong>
+          )}
+        </button>
+
         {(similarBusy || similarError || similarResults.length > 0) && (
           <section className="similar-panel" aria-labelledby="similar-title" aria-busy={similarBusy}>
             <div className="panel-heading panel-heading--compact">
@@ -549,6 +645,7 @@ export function RoomScreen({
             <div><h2>Hàng chờ</h2><p>{snapshot.queue.length}/50 video</p></div>
             <span className="count-badge">{snapshot.queue.length}</span>
           </div>
+          {queueError && <p className="field-helper is-error queue-error" role="alert">{queueError}</p>}
           <ol className="queue-list">
             {snapshot.queue.length === 0 ? (
               <li className="queue-empty">Chưa có video tiếp theo.</li>
@@ -557,18 +654,39 @@ export function RoomScreen({
               return (
                 <li className="queue-item" key={item.itemId}>
                   <span className="queue-index">{String(index + 1).padStart(2, "0")}</span>
-                  <div className="queue-copy">
-                    <strong>YouTube · {item.videoId}</strong>
-                    <span>Thêm bởi {item.addedByName}</span>
-                  </div>
+                  <button
+                    className="queue-video"
+                    type="button"
+                    disabled={!snapshot.isHost || queueBusyItemId !== null}
+                    onClick={() => void runQueueAction(item.itemId, onPlayVideo, "Không phát được video.")}
+                    aria-label={snapshot.isHost ? `Phát ${item.title}` : undefined}
+                    title={snapshot.isHost ? "Phát video này ngay" : undefined}
+                  >
+                    <img
+                      className="queue-thumbnail"
+                      src={item.thumbnailUrl}
+                      alt=""
+                      width="120"
+                      height="68"
+                      loading="lazy"
+                      referrerPolicy="no-referrer"
+                    />
+                    <span className="queue-copy">
+                      <strong>{item.title}</strong>
+                      <span>{item.channelTitle}</span>
+                      <small>Thêm bởi {item.addedByName}</small>
+                    </span>
+                  </button>
                   {canRemove && (
                     <button
-                      className="icon-action icon-action--quiet"
+                      className="icon-action queue-remove"
                       type="button"
-                      onClick={() => void onRemoveVideo(item.itemId).catch((cause) => setError(cause instanceof Error ? cause.message : "Không xóa được video."))}
-                      aria-label="Xóa khỏi hàng chờ"
+                      disabled={queueBusyItemId !== null}
+                      onClick={() => void runQueueAction(item.itemId, onRemoveVideo, "Không xóa được video.")}
+                      aria-label={`Xóa ${item.title} khỏi hàng chờ`}
+                      title="Xóa khỏi hàng chờ"
                     >
-                      <Trash2 size={17} />
+                      <Trash2 size={15} />
                     </button>
                   )}
                 </li>

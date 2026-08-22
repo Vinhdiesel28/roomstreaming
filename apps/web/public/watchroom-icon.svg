@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="Watchroom">
+  <rect width="512" height="512" rx="112" fill="#f8f5e9"/>
+  <path d="M88 112h72l36 202 60-146h48l60 146 36-202h72l-67 288h-68l-57-137-57 137h-68L88 112Z" fill="#24252a"/>
+  <circle cx="408" cy="104" r="56" fill="#d8e642" stroke="#24252a" stroke-width="16"/>
+</svg>

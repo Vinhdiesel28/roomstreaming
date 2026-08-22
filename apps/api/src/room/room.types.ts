@@ -11,6 +11,9 @@ export interface Playback {
 export interface QueueItem {
   itemId: string;
   videoId: string;
+  title: string;
+  channelTitle: string;
+  thumbnailUrl: string;
   addedBySessionId: string;
   addedByName: string;
   addedAt: number;

@@ -64,6 +64,7 @@ export default function App() {
           onLeave={leave}
           onAddVideo={party.addVideo}
           onRemoveVideo={party.removeVideo}
+          onPlayVideo={party.playQueuedVideo}
           onCommand={party.command}
           onSendChat={party.sendChat}
         />

@@ -71,6 +71,7 @@ describe("RoomScreen layout", () => {
         onLeave={vi.fn(async () => undefined)}
         onAddVideo={vi.fn(async () => undefined)}
         onRemoveVideo={vi.fn(async () => undefined)}
+        onPlayVideo={vi.fn(async () => undefined)}
         onCommand={vi.fn(async () => undefined)}
         onSendChat={vi.fn(async () => undefined)}
       />,
@@ -79,7 +80,7 @@ describe("RoomScreen layout", () => {
     const picker = html.indexOf('class="video-picker"');
     const video = html.indexOf('class="video-stage"');
     const meta = html.indexOf('class="video-meta"');
-    const chat = html.indexOf('class="chat-panel"');
+    const chat = html.indexOf('class="chat-panel ');
     const voice = html.indexOf('class="voice-card"');
     const queue = html.indexOf('class="queue-panel"');
     const members = html.indexOf('class="members-panel"');
@@ -92,6 +93,8 @@ describe("RoomScreen layout", () => {
     expect(voice).toBeLessThan(queue);
     expect(queue).toBeLessThan(members);
     expect(html).toContain('id="youtube-search"');
+    expect(html).toContain('class="mobile-chat-toggle"');
+    expect(html).toContain('aria-controls="room-chat"');
   });
 
   it("does not require a manual suggestion trigger when a video is playing", () => {
@@ -114,6 +117,7 @@ describe("RoomScreen layout", () => {
         onLeave={vi.fn(async () => undefined)}
         onAddVideo={vi.fn(async () => undefined)}
         onRemoveVideo={vi.fn(async () => undefined)}
+        onPlayVideo={vi.fn(async () => undefined)}
         onCommand={vi.fn(async () => undefined)}
         onSendChat={vi.fn(async () => undefined)}
       />,
@@ -145,6 +149,7 @@ describe("RoomScreen layout", () => {
         onLeave={vi.fn(async () => undefined)}
         onAddVideo={vi.fn(async () => undefined)}
         onRemoveVideo={vi.fn(async () => undefined)}
+        onPlayVideo={vi.fn(async () => undefined)}
         onCommand={vi.fn(async () => undefined)}
         onSendChat={vi.fn(async () => undefined)}
       />,
@@ -154,5 +159,104 @@ describe("RoomScreen layout", () => {
     expect(html).toContain("Trả lời tin nhắn của Vinh");
     expect(html).toContain('class="chat-reply-quote"');
     expect(html).toContain("Xem video này nhé");
+  });
+
+  it("shows queue metadata, a clickable video and a compact remove action", () => {
+    const html = renderToStaticMarkup(
+      <RoomScreen
+        snapshot={{
+          ...snapshot,
+          currentVideo: {
+            videoId: "dQw4w9WgXcQ",
+            state: "playing",
+            positionSec: 0,
+            changedAt: 1,
+            version: 1,
+          },
+          queue: [{
+            itemId: "queue-1",
+            videoId: "aaaaaaaaaaa",
+            title: "Video trong hàng chờ",
+            channelTitle: "Kênh thử nghiệm",
+            thumbnailUrl: "https://i.ytimg.com/test.jpg",
+            addedBySessionId: "session-1",
+            addedByName: "Vinh",
+            addedAt: 2,
+          }],
+        }}
+        sessionId="session-1"
+        messages={[]}
+        connected
+        socket={null}
+        onLeave={vi.fn(async () => undefined)}
+        onAddVideo={vi.fn(async () => undefined)}
+        onRemoveVideo={vi.fn(async () => undefined)}
+        onPlayVideo={vi.fn(async () => undefined)}
+        onCommand={vi.fn(async () => undefined)}
+        onSendChat={vi.fn(async () => undefined)}
+      />,
+    );
+
+    expect(html).toContain('class="queue-thumbnail"');
+    expect(html).toContain("Video trong hàng chờ");
+    expect(html).toContain("Kênh thử nghiệm");
+    expect(html).toContain('class="queue-video"');
+    expect(html).toContain("Phát Video trong hàng chờ");
+    expect(html).toContain('class="icon-action queue-remove"');
+    expect(html).not.toContain("Phát ngay");
+    expect(html).toContain("Bỏ qua");
+  });
+
+  it("opens the mobile chat tray without leaving the room screen", async () => {
+    const originalMatchMedia = window.matchMedia;
+    Object.defineProperty(window, "matchMedia", {
+      configurable: true,
+      value: vi.fn(() => ({
+        matches: true,
+        media: "(max-width: 59.999rem)",
+        onchange: null,
+        addEventListener: vi.fn(),
+        removeEventListener: vi.fn(),
+        addListener: vi.fn(),
+        removeListener: vi.fn(),
+        dispatchEvent: vi.fn(),
+      })),
+    });
+
+    const container = document.createElement("div");
+    const root = createRoot(container);
+    await act(async () => {
+      root.render(
+        <RoomScreen
+          snapshot={snapshot}
+          sessionId="session-1"
+          messages={[]}
+          connected
+          socket={null}
+          onLeave={vi.fn(async () => undefined)}
+          onAddVideo={vi.fn(async () => undefined)}
+          onRemoveVideo={vi.fn(async () => undefined)}
+          onPlayVideo={vi.fn(async () => undefined)}
+          onCommand={vi.fn(async () => undefined)}
+          onSendChat={vi.fn(async () => undefined)}
+        />,
+      );
+    });
+
+    const toggle = container.querySelector<HTMLButtonElement>(".mobile-chat-toggle");
+    const chat = container.querySelector<HTMLElement>("#room-chat");
+    expect(toggle?.getAttribute("aria-expanded")).toBe("false");
+    expect(chat?.getAttribute("aria-hidden")).toBe("true");
+
+    await act(async () => toggle?.click());
+    expect(toggle?.getAttribute("aria-expanded")).toBe("true");
+    expect(chat?.getAttribute("aria-hidden")).toBe("false");
+    expect(chat?.classList.contains("is-mobile-open")).toBe(true);
+
+    act(() => root.unmount());
+    Object.defineProperty(window, "matchMedia", {
+      configurable: true,
+      value: originalMatchMedia,
+    });
   });
 });

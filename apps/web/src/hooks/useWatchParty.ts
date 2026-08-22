@@ -143,6 +143,10 @@ export function useWatchParty() {
     (itemId: string) => emit<RoomSnapshot>("queue:remove", { itemId }),
     [emit],
   );
+  const playQueuedVideo = useCallback(
+    (itemId: string) => emit<RoomSnapshot>("queue:play", { itemId }),
+    [emit],
+  );
   const command = useCallback(
     (action: PlaybackCommand, positionSec = 0) =>
       emit<RoomSnapshot>("playback:command", { action, positionSec }),
@@ -160,6 +164,7 @@ export function useWatchParty() {
     leaveRoom,
     addVideo,
     removeVideo,
+    playQueuedVideo,
     command,
     sendChat,
   };
