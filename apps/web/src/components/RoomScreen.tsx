@@ -143,6 +143,7 @@ export function RoomScreen({
   const [copied, setCopied] = useState(false);
   const [chatOpen, setChatOpen] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
+  const [profileSyncWarning, setProfileSyncWarning] = useState<string | null>(null);
   const [profile, setProfile] = useState<BrowserProfile>(() => {
     const stored = loadBrowserProfile();
     const roomName = snapshot.members.find((member) => member.sessionId === sessionId)?.name ?? "";
@@ -160,7 +161,13 @@ export function RoomScreen({
   const saveProfile = async (nextProfile: BrowserProfile) => {
     const saved = saveBrowserProfile(nextProfile);
     setProfile(saved);
-    await onUpdateProfile({ name: saved.name, avatarUrl: saved.avatarUrl });
+    setProfileSyncWarning(null);
+    void Promise.resolve()
+      .then(() => onUpdateProfile({ name: saved.name, avatarUrl: saved.avatarUrl }))
+      .then(() => setProfileSyncWarning(null))
+      .catch(() => setProfileSyncWarning(
+        "Đã lưu trên thiết bị này. API chưa đồng bộ nên bạn bè có thể chưa thấy avatar mới.",
+      ));
   };
 
   useEffect(() => {
@@ -546,8 +553,8 @@ export function RoomScreen({
             ) : messages.map((message) => (
               <article className={`chat-message ${message.senderSessionId === sessionId ? "is-mine" : ""}`} key={message.id}>
                 <span className="chat-avatar" aria-hidden="true">
-                  {message.senderAvatarUrl
-                    ? <img src={message.senderAvatarUrl} alt="" width="32" height="32" />
+                  {message.senderAvatarUrl || (message.senderSessionId === sessionId ? profile.avatarUrl : null)
+                    ? <img src={message.senderAvatarUrl ?? profile.avatarUrl ?? ""} alt="" width="32" height="32" />
                     : message.senderName.slice(0, 1).toUpperCase()}
                 </span>
                 <button
@@ -577,6 +584,9 @@ export function RoomScreen({
             ))}
             <div ref={chatEndRef} />
           </div>
+          {profileSyncWarning && (
+            <p className="profile-sync-warning" role="status">{profileSyncWarning}</p>
+          )}
           <form className="chat-form" onSubmit={sendChat}>
             <label className="visually-hidden" htmlFor="chat-message">Tin nhắn</label>
             {replyingTo && (
@@ -750,8 +760,8 @@ export function RoomScreen({
             {snapshot.members.map((member) => (
               <li key={member.sessionId}>
                 <span className="avatar" aria-hidden="true">
-                  {member.avatarUrl
-                    ? <img src={member.avatarUrl} alt="" width="40" height="40" />
+                  {member.avatarUrl || (member.sessionId === sessionId ? profile.avatarUrl : null)
+                    ? <img src={member.avatarUrl ?? profile.avatarUrl ?? ""} alt="" width="40" height="40" />
                     : member.name.slice(0, 1).toUpperCase()}
                 </span>
                 <span className="member-name">{member.name}{member.sessionId === sessionId ? " (bạn)" : ""}</span>

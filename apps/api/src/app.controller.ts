@@ -30,7 +30,13 @@ export class AppController {
 
   @Get("health")
   health() {
-    return { ok: true, rooms: this.rooms.size, now: Date.now() };
+    return {
+      ok: true,
+      rooms: this.rooms.size,
+      features: { profiles: true },
+      revision: process.env.RENDER_GIT_COMMIT?.slice(0, 7) ?? "local",
+      now: Date.now(),
+    };
   }
 
   @Post("api/session")
