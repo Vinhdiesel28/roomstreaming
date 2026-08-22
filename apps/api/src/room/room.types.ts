@@ -22,6 +22,7 @@ export interface QueueItem {
 export interface MemberPublic {
   sessionId: string;
   name: string;
+  avatarUrl: string | null;
   joinedAt: number;
   online: boolean;
   isHost: boolean;
@@ -30,6 +31,7 @@ export interface MemberPublic {
 export interface MemberInternal {
   sessionId: string;
   name: string;
+  avatarUrl: string | null;
   joinedAt: number;
   socketIds: Set<string>;
 }
@@ -67,6 +69,7 @@ export interface ChatMessage {
   id: string;
   senderSessionId: string;
   senderName: string;
+  senderAvatarUrl?: string;
   text: string;
   sentAt: number;
   replyTo?: ChatReply;

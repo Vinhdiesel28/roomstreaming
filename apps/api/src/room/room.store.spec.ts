@@ -17,6 +17,19 @@ describe("RoomStore", () => {
     expect(store.snapshot(room, "host-session").isHost).toBe(true);
   });
 
+  it("updates the member name and avatar in room snapshots", () => {
+    const room = store.create("host-session", "Minh");
+    store.join(room.code, "host-session", "socket-1", "Minh");
+    const avatarUrl = "data:image/png;base64,AAAA";
+
+    store.updateProfile(room, "host-session", "Minh mới", avatarUrl);
+
+    expect(store.snapshot(room, "host-session").members[0]).toMatchObject({
+      name: "Minh mới",
+      avatarUrl,
+    });
+  });
+
   it("keeps chat out of the room state and advances the queue", () => {
     const room = store.create("host", "Minh");
     store.join(room.code, "host", "socket-1", "Minh");

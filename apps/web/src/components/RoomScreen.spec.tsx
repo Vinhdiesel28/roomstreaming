@@ -21,6 +21,7 @@ const snapshot: RoomSnapshot = {
     {
       sessionId: "session-1",
       name: "Vinh",
+      avatarUrl: null,
       joinedAt: 1,
       online: true,
       isHost: true,
@@ -74,13 +75,14 @@ describe("RoomScreen layout", () => {
         onPlayVideo={vi.fn(async () => undefined)}
         onCommand={vi.fn(async () => undefined)}
         onSendChat={vi.fn(async () => undefined)}
+        onUpdateProfile={vi.fn(async () => undefined)}
       />,
     );
 
     const picker = html.indexOf('class="video-picker"');
     const video = html.indexOf('class="video-stage"');
     const meta = html.indexOf('class="video-meta"');
-    const chat = html.indexOf('class="chat-panel"');
+    const chat = html.indexOf('class="chat-panel chat-theme-paper"');
     const voice = html.indexOf('class="voice-card"');
     const chatLog = html.indexOf('class="chat-log"');
     const queue = html.indexOf('class="queue-panel"');
@@ -97,8 +99,12 @@ describe("RoomScreen layout", () => {
     expect(html).toContain('id="youtube-search"');
     expect(html).toContain('class="mobile-chat-toggle"');
     expect(html).toContain('aria-controls="room-chat"');
-    expect(html).toContain('class="chat-panel"');
-    expect(html).not.toContain('class="chat-panel is-mobile-closed"');
+    expect(html).toContain('class="chat-panel chat-theme-paper"');
+    expect(html).not.toContain("is-mobile-closed");
+    expect(html).toContain('class="profile-avatar-button"');
+    expect(html).toContain("Vào voice");
+    expect(html).not.toContain("Không ghi âm");
+    expect(html).not.toContain("Bạn đang ở đây một mình");
   });
 
   it("keeps the same-channel panel visible while suggestions load", () => {
@@ -124,6 +130,7 @@ describe("RoomScreen layout", () => {
         onPlayVideo={vi.fn(async () => undefined)}
         onCommand={vi.fn(async () => undefined)}
         onSendChat={vi.fn(async () => undefined)}
+        onUpdateProfile={vi.fn(async () => undefined)}
       />,
     );
 
@@ -156,10 +163,12 @@ describe("RoomScreen layout", () => {
         onPlayVideo={vi.fn(async () => undefined)}
         onCommand={vi.fn(async () => undefined)}
         onSendChat={vi.fn(async () => undefined)}
+        onUpdateProfile={vi.fn(async () => undefined)}
       />,
     );
 
     expect(html).toContain('class="chat-message__content"');
+    expect(html).toContain('class="chat-avatar"');
     expect(html).toContain("Trả lời tin nhắn của Vinh");
     expect(html).toContain('class="chat-reply-quote"');
     expect(html).toContain("Xem video này nhé");
@@ -198,6 +207,7 @@ describe("RoomScreen layout", () => {
         onPlayVideo={vi.fn(async () => undefined)}
         onCommand={vi.fn(async () => undefined)}
         onSendChat={vi.fn(async () => undefined)}
+        onUpdateProfile={vi.fn(async () => undefined)}
       />,
     );
 
@@ -243,6 +253,7 @@ describe("RoomScreen layout", () => {
           onPlayVideo={vi.fn(async () => undefined)}
           onCommand={vi.fn(async () => undefined)}
           onSendChat={vi.fn(async () => undefined)}
+          onUpdateProfile={vi.fn(async () => undefined)}
         />,
       );
     });

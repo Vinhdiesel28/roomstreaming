@@ -91,12 +91,13 @@ export class RoomGateway implements OnGatewayConnection, OnGatewayDisconnect {
   @SubscribeMessage("room:create")
   async createRoom(
     @ConnectedSocket() client: AuthedSocket,
-    @MessageBody() payload: { name?: unknown },
+    @MessageBody() payload: { name?: unknown; avatarUrl?: unknown },
   ): Promise<Ack<RoomSnapshot>> {
     return this.safe(client, "create", 3, 60_000, async () => {
       const name = this.name(payload?.name);
-      const room = this.rooms.create(client.data.sessionId, name);
-      this.rooms.join(room.code, client.data.sessionId, client.id, name);
+      const avatarUrl = this.avatar(payload?.avatarUrl);
+      const room = this.rooms.create(client.data.sessionId, name, avatarUrl);
+      this.rooms.join(room.code, client.data.sessionId, client.id, name, avatarUrl);
       await client.join(room.code);
       return this.rooms.snapshot(room, client.data.sessionId);
     });
@@ -105,12 +106,13 @@ export class RoomGateway implements OnGatewayConnection, OnGatewayDisconnect {
   @SubscribeMessage("room:join")
   async joinRoom(
     @ConnectedSocket() client: AuthedSocket,
-    @MessageBody() payload: { roomCode?: unknown; name?: unknown },
+    @MessageBody() payload: { roomCode?: unknown; name?: unknown; avatarUrl?: unknown },
   ): Promise<Ack<RoomSnapshot>> {
     return this.safe(client, "join", 12, 60_000, async () => {
       const name = this.name(payload?.name);
+      const avatarUrl = this.avatar(payload?.avatarUrl);
       const code = this.code(payload?.roomCode);
-      const room = this.rooms.join(code, client.data.sessionId, client.id, name);
+      const room = this.rooms.join(code, client.data.sessionId, client.id, name, avatarUrl);
       await client.join(room.code);
       this.cancelHostTransferIfBack(room, client.data.sessionId);
       this.broadcastSnapshot(room);
@@ -133,6 +135,21 @@ export class RoomGateway implements OnGatewayConnection, OnGatewayDisconnect {
       this.broadcastSnapshot(result.room);
       this.server.to(result.room.code).emit("member:left", { at: Date.now() });
       return null;
+    });
+  }
+
+  @SubscribeMessage("profile:update")
+  updateProfile(
+    @ConnectedSocket() client: AuthedSocket,
+    @MessageBody() payload: { name?: unknown; avatarUrl?: unknown },
+  ): Ack<RoomSnapshot> {
+    return this.safeSync(client, "profile-update", 6, 30_000, () => {
+      const room = this.requireRoom(client);
+      const name = this.name(payload?.name);
+      const avatarUrl = this.avatar(payload?.avatarUrl);
+      this.rooms.updateProfile(room, client.data.sessionId, name, avatarUrl);
+      this.broadcastSnapshot(room);
+      return this.rooms.snapshot(room, client.data.sessionId);
     });
   }
 
@@ -301,6 +318,7 @@ export class RoomGateway implements OnGatewayConnection, OnGatewayDisconnect {
         id: randomUUID(),
         senderSessionId: client.data.sessionId,
         senderName: member.name,
+        ...(member.avatarUrl ? { senderAvatarUrl: member.avatarUrl } : {}),
         text,
         sentAt: Date.now(),
         ...(replyTo ? { replyTo } : {}),
@@ -396,6 +414,10 @@ export class RoomGateway implements OnGatewayConnection, OnGatewayDisconnect {
     return name;
   }
 
+  private avatar(value: unknown): string | null {
+    return parseAvatarUrl(value);
+  }
+
   private code(value: unknown) {
     if (typeof value !== "string") throw new Error("INVALID_ROOM_CODE");
     const code = value.trim().toUpperCase();
@@ -442,6 +464,7 @@ export class RoomGateway implements OnGatewayConnection, OnGatewayDisconnect {
       ROOM_NOT_FOUND: "Không tìm thấy phòng này. Kiểm tra lại mã phòng.",
       ROOM_FULL: "Phòng đã đủ 20 người.",
       INVALID_NAME: "Tên cần từ 2 đến 32 ký tự.",
+      INVALID_AVATAR: "Ảnh đại diện không hợp lệ hoặc quá lớn.",
       INVALID_ROOM_CODE: "Mã phòng phải gồm 8 ký tự.",
       INVALID_YOUTUBE_URL: "Link YouTube không hợp lệ hoặc không được hỗ trợ.",
       YOUTUBE_VIDEO_UNAVAILABLE: "Video không tồn tại, đang để riêng tư hoặc không cho phép phát trên web khác.",
@@ -481,4 +504,13 @@ export function parseChatReply(value: unknown): ChatReply | undefined {
     return undefined;
   }
   return { messageId, senderName, text };
+}
+
+export function parseAvatarUrl(value: unknown): string | null {
+  if (value === undefined || value === null || value === "") return null;
+  if (typeof value !== "string" || value.length > 60_000) throw new Error("INVALID_AVATAR");
+  if (!/^data:image\/(?:jpeg|png|webp);base64,[A-Za-z0-9+/=]+$/.test(value)) {
+    throw new Error("INVALID_AVATAR");
+  }
+  return value;
 }

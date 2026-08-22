@@ -67,6 +67,7 @@ export default function App() {
           onPlayVideo={party.playQueuedVideo}
           onCommand={party.command}
           onSendChat={party.sendChat}
+          onUpdateProfile={party.updateProfile}
         />
       ) : (
         <HomeScreen

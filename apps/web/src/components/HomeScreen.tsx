@@ -1,5 +1,6 @@
 import { ArrowRight, Link2, Plus, Radio, ShieldCheck, Users } from "lucide-react";
 import { FormEvent, useEffect, useState } from "react";
+import { loadBrowserProfile, saveDisplayName } from "../lib/profile";
 import { InviteDialog } from "./InviteDialog";
 
 interface Props {
@@ -11,8 +12,6 @@ interface Props {
   onCancelInvite: () => void;
 }
 
-const NAME_KEY = "watchroom.display-name";
-
 export function HomeScreen({
   connected,
   connecting,
@@ -21,7 +20,7 @@ export function HomeScreen({
   onJoin,
   onCancelInvite,
 }: Props) {
-  const [name, setName] = useState(() => localStorage.getItem(NAME_KEY) ?? "");
+  const [name, setName] = useState(() => loadBrowserProfile().name);
   const [code, setCode] = useState(initialCode);
   const [busy, setBusy] = useState<"create" | "join" | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -30,7 +29,7 @@ export function HomeScreen({
     setCode(initialCode);
   }, [initialCode]);
 
-  const rememberName = () => localStorage.setItem(NAME_KEY, name.trim());
+  const rememberName = () => saveDisplayName(name);
 
   const submitCreate = async (event: FormEvent) => {
     event.preventDefault();

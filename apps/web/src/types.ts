@@ -22,6 +22,7 @@ export interface QueueItem {
 export interface Member {
   sessionId: string;
   name: string;
+  avatarUrl: string | null;
   joinedAt: number;
   online: boolean;
   isHost: boolean;
@@ -42,6 +43,7 @@ export interface ChatMessage {
   id: string;
   senderSessionId: string;
   senderName: string;
+  senderAvatarUrl?: string;
   text: string;
   sentAt: number;
   replyTo?: ChatReply;
@@ -83,3 +85,8 @@ export type Ack<T> =
   | { ok: false; error: { code: string; message: string } };
 
 export type PlaybackCommand = "PLAY" | "PAUSE" | "SEEK" | "NEXT";
+
+export interface SharedProfile {
+  name: string;
+  avatarUrl: string | null;
+}

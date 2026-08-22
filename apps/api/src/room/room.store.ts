@@ -27,7 +27,7 @@ export class RoomStore implements OnModuleDestroy {
     clearInterval(this.cleanupTimer);
   }
 
-  create(hostSessionId: string, name: string) {
+  create(hostSessionId: string, name: string, avatarUrl: string | null = null) {
     let code = this.generateCode();
     while (this.rooms.has(code)) code = this.generateCode();
     const now = Date.now();
@@ -42,7 +42,7 @@ export class RoomStore implements OnModuleDestroy {
       updatedAt: now,
       expiresAt: now + this.ttlMs,
     };
-    room.members.set(hostSessionId, this.newMember(hostSessionId, name));
+    room.members.set(hostSessionId, this.newMember(hostSessionId, name, avatarUrl));
     this.rooms.set(code, room);
     return room;
   }
@@ -51,15 +51,22 @@ export class RoomStore implements OnModuleDestroy {
     return this.rooms.get(code.toUpperCase()) ?? null;
   }
 
-  join(code: string, sessionId: string, socketId: string, name: string) {
+  join(
+    code: string,
+    sessionId: string,
+    socketId: string,
+    name: string,
+    avatarUrl: string | null = null,
+  ) {
     const room = this.get(code);
     if (!room) throw new Error("ROOM_NOT_FOUND");
     const existing = room.members.get(sessionId);
     const onlineMembers = [...room.members.values()].filter((member) => member.socketIds.size > 0);
     if (!existing && onlineMembers.length >= MAX_MEMBERS) throw new Error("ROOM_FULL");
 
-    const member = existing ?? this.newMember(sessionId, name);
+    const member = existing ?? this.newMember(sessionId, name, avatarUrl);
     member.name = name;
+    member.avatarUrl = avatarUrl;
     member.socketIds.add(socketId);
     room.members.set(sessionId, member);
     this.socketToRoom.set(socketId, room.code);
@@ -93,6 +100,14 @@ export class RoomStore implements OnModuleDestroy {
     return room.members.get(sessionId) ?? null;
   }
 
+  updateProfile(room: RoomRecord, sessionId: string, name: string, avatarUrl: string | null) {
+    const member = this.member(room, sessionId);
+    if (!member) throw new Error("NOT_IN_ROOM");
+    member.name = name;
+    member.avatarUrl = avatarUrl;
+    this.touch(room);
+  }
+
   snapshot(room: RoomRecord, viewerSessionId: string): RoomSnapshot {
     return {
       roomCode: room.code,
@@ -105,6 +120,7 @@ export class RoomStore implements OnModuleDestroy {
         .map((member) => ({
           sessionId: member.sessionId,
           name: member.name,
+          avatarUrl: member.avatarUrl,
           joinedAt: member.joinedAt,
           online: member.socketIds.size > 0,
           isHost: member.sessionId === room.hostSessionId,
@@ -233,8 +249,8 @@ export class RoomStore implements OnModuleDestroy {
     room.expiresAt = now + this.ttlMs;
   }
 
-  private newMember(sessionId: string, name: string): MemberInternal {
-    return { sessionId, name, joinedAt: Date.now(), socketIds: new Set() };
+  private newMember(sessionId: string, name: string, avatarUrl: string | null): MemberInternal {
+    return { sessionId, name, avatarUrl, joinedAt: Date.now(), socketIds: new Set() };
   }
 
   private generateCode() {

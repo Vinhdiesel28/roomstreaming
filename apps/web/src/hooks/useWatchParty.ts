@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { io, type Socket } from "socket.io-client";
 import { apiUrl, getSessionToken, resetSessionToken } from "../lib/api";
-import type { Ack, ChatMessage, ChatReply, PlaybackCommand, RoomSnapshot } from "../types";
+import { loadBrowserProfile } from "../lib/profile";
+import type { Ack, ChatMessage, ChatReply, PlaybackCommand, RoomSnapshot, SharedProfile } from "../types";
 
 interface PartyState {
   socket: Socket | null;
@@ -117,7 +118,10 @@ export function useWatchParty() {
 
   const createRoom = useCallback(
     async (name: string) => {
-      const snapshot = await emit<RoomSnapshot>("room:create", { name });
+      const snapshot = await emit<RoomSnapshot>("room:create", {
+        name,
+        avatarUrl: loadBrowserProfile().avatarUrl,
+      });
       setState((current) => ({ ...current, snapshot, messages: [], error: null }));
       return snapshot;
     },
@@ -126,7 +130,11 @@ export function useWatchParty() {
 
   const joinRoom = useCallback(
     async (roomCode: string, name: string) => {
-      const snapshot = await emit<RoomSnapshot>("room:join", { roomCode, name });
+      const snapshot = await emit<RoomSnapshot>("room:join", {
+        roomCode,
+        name,
+        avatarUrl: loadBrowserProfile().avatarUrl,
+      });
       setState((current) => ({ ...current, snapshot, messages: [], error: null }));
       return snapshot;
     },
@@ -156,6 +164,11 @@ export function useWatchParty() {
     (text: string, replyTo?: ChatReply) => emit<{ id: string }>("chat:send", { text, replyTo }),
     [emit],
   );
+  const updateProfile = useCallback(async (profile: SharedProfile) => {
+    const snapshot = await emit<RoomSnapshot>("profile:update", profile);
+    setState((current) => ({ ...current, snapshot, error: null }));
+    return snapshot;
+  }, [emit]);
 
   return {
     ...state,
@@ -167,5 +180,6 @@ export function useWatchParty() {
     playQueuedVideo,
     command,
     sendChat,
+    updateProfile,
   };
 }

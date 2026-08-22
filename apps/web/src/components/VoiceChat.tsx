@@ -32,12 +32,6 @@ function RemoteAudio({ stream, name }: { stream?: MediaStream; name: string }) {
   return <audio ref={audioRef} autoPlay playsInline aria-label={`Âm thanh của ${name}`} />;
 }
 
-function connectionLabel(state: RTCPeerConnectionState | "waiting") {
-  if (state === "connected") return "Đã nối";
-  if (state === "failed" || state === "disconnected") return "Mất nối";
-  return "Đang nối";
-}
-
 export function VoiceChat({ socket, connected }: Props) {
   const voice = useVoiceChat(socket);
   const joined = voice.status === "joined";
@@ -45,11 +39,8 @@ export function VoiceChat({ socket, connected }: Props) {
   return (
     <section className="voice-card" aria-labelledby="voice-title">
       <div className="voice-card__heading">
-        <div>
-          <h3 id="voice-title"><Radio size={17} /> Voice chat</h3>
-          <p>Không ghi âm · tối đa {voice.maxParticipants} người</p>
-        </div>
-        {joined && <span className="voice-live"><span /> Đang vào voice</span>}
+        <h3 id="voice-title"><Radio size={17} /> Voice</h3>
+        {joined && <span className="voice-count">{voice.participants.length + 1}/{voice.maxParticipants}</span>}
       </div>
 
       {voice.status === "idle" && (
@@ -59,13 +50,13 @@ export function VoiceChat({ socket, connected }: Props) {
           onClick={() => void voice.join()}
           disabled={!connected}
         >
-          <Headphones size={18} /> {connected ? "Tham gia voice" : "Chờ kết nối"}
+          <Headphones size={18} /> {connected ? "Vào voice" : "Đang nối"}
         </button>
       )}
 
       {voice.status === "joining" && (
         <button className="btn btn--ink btn--small voice-join" type="button" disabled data-state="loading">
-          <LoaderCircle className="spin" size={18} /> Đang xin quyền micro
+          <LoaderCircle className="spin" size={18} /> Đang vào
         </button>
       )}
 
@@ -77,39 +68,23 @@ export function VoiceChat({ socket, connected }: Props) {
               type="button"
               onClick={() => void voice.toggleMute()}
               aria-pressed={voice.muted}
+              aria-label={voice.muted ? "Bật micro" : "Tắt micro"}
             >
               {voice.muted ? <MicOff size={18} /> : <Mic size={18} />}
               {voice.muted ? "Bật mic" : "Tắt mic"}
             </button>
             <button className="btn btn--small voice-leave" type="button" onClick={() => void voice.leave()}>
-              <PhoneOff size={18} /> Rời voice
+              <PhoneOff size={18} /> Rời
             </button>
           </div>
-
-          <ul className="voice-participants" aria-label="Người đang trong voice">
-            <li>
-              <span className={`voice-mic ${voice.muted ? "is-muted" : ""}`} aria-hidden="true">
-                {voice.muted ? <MicOff size={15} /> : <Mic size={15} />}
-              </span>
-              <strong>Bạn</strong>
-              <span>{voice.muted ? "Đã tắt mic" : "Mic đang bật"}</span>
-            </li>
-            {voice.participants.map((peer) => (
-              <li key={peer.socketId}>
-                <RemoteAudio stream={peer.stream} name={peer.name} />
-                <span className={`voice-mic ${peer.muted ? "is-muted" : ""}`} aria-hidden="true">
-                  {peer.muted ? <MicOff size={15} /> : <Mic size={15} />}
-                </span>
-                <strong>{peer.name}</strong>
-                <span>{peer.muted ? "Đã tắt mic" : connectionLabel(peer.connectionState)}</span>
-              </li>
-            ))}
-          </ul>
-          {voice.participants.length === 0 && (
-            <p className="voice-empty">Bạn đang ở đây một mình. Mời người khác bằng link phòng.</p>
-          )}
         </>
       )}
+
+      <div className="voice-audio-layer" aria-hidden="true">
+        {voice.participants.map((peer) => (
+          <RemoteAudio key={peer.socketId} stream={peer.stream} name={peer.name} />
+        ))}
+      </div>
 
       {voice.error && (
         <div className="voice-error" role="alert">

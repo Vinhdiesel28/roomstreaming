@@ -11,6 +11,7 @@ import {
   Reply,
   Search,
   Send,
+  Settings2,
   SkipForward,
   Sun,
   Trash2,
@@ -22,13 +23,16 @@ import { FormEvent, useEffect, useRef, useState } from "react";
 import type { Socket } from "socket.io-client";
 import { useScreenWakeLock } from "../hooks/useScreenWakeLock";
 import { getSimilarYouTubeVideos, searchYouTube } from "../lib/api";
+import { loadBrowserProfile, saveBrowserProfile, type BrowserProfile } from "../lib/profile";
 import type {
   ChatMessage,
   ChatReply,
   PlaybackCommand,
   RoomSnapshot,
+  SharedProfile,
   YouTubeSearchResult,
 } from "../types";
+import { ProfileDialog } from "./ProfileDialog";
 import { YouTubePlayer } from "./YouTubePlayer";
 import { VoiceChat } from "./VoiceChat";
 
@@ -44,6 +48,7 @@ interface Props {
   onPlayVideo: (itemId: string) => Promise<unknown>;
   onCommand: (action: PlaybackCommand, positionSec?: number) => Promise<unknown>;
   onSendChat: (text: string, replyTo?: ChatReply) => Promise<unknown>;
+  onUpdateProfile: (profile: SharedProfile) => Promise<unknown>;
 }
 
 type VideoResultState = "idle" | "loading" | "success" | "error";
@@ -114,6 +119,7 @@ export function RoomScreen({
   onPlayVideo,
   onCommand,
   onSendChat,
+  onUpdateProfile,
 }: Props) {
   const [videoUrl, setVideoUrl] = useState("");
   const [videoSource, setVideoSource] = useState<"link" | "search">("search");
@@ -136,6 +142,12 @@ export function RoomScreen({
   const [error, setError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
   const [chatOpen, setChatOpen] = useState(false);
+  const [profileOpen, setProfileOpen] = useState(false);
+  const [profile, setProfile] = useState<BrowserProfile>(() => {
+    const stored = loadBrowserProfile();
+    const roomName = snapshot.members.find((member) => member.sessionId === sessionId)?.name ?? "";
+    return { ...stored, name: stored.name || roomName };
+  });
   const [isCompactLayout, setIsCompactLayout] = useState(() =>
     typeof window.matchMedia === "function" && window.matchMedia("(max-width: 59.999rem)").matches,
   );
@@ -144,6 +156,12 @@ export function RoomScreen({
   const chatInputRef = useRef<HTMLInputElement>(null);
   const wakeLockStatus = useScreenWakeLock(snapshot.currentVideo?.state === "playing");
   const unreadMessageCount = Math.max(0, messages.length - lastReadMessageCount);
+
+  const saveProfile = async (nextProfile: BrowserProfile) => {
+    const saved = saveBrowserProfile(nextProfile);
+    setProfile(saved);
+    await onUpdateProfile({ name: saved.name, avatarUrl: saved.avatarUrl });
+  };
 
   useEffect(() => {
     if (typeof window.matchMedia !== "function") return;
@@ -505,7 +523,7 @@ export function RoomScreen({
         </div>
 
         <section
-          className={`chat-panel${isCompactLayout ? ` ${chatOpen ? "is-mobile-open" : "is-mobile-closed"}` : ""}`}
+          className={`chat-panel chat-theme-${profile.chatTheme}${isCompactLayout ? ` ${chatOpen ? "is-mobile-open" : "is-mobile-closed"}` : ""}`}
           id="room-chat"
           aria-hidden={isCompactLayout && !chatOpen}
           inert={isCompactLayout && !chatOpen ? true : undefined}
@@ -527,6 +545,11 @@ export function RoomScreen({
               <div className="chat-empty"><MessageCircle size={22} /><p>nói chi bây giờ , ù húuuu</p></div>
             ) : messages.map((message) => (
               <article className={`chat-message ${message.senderSessionId === sessionId ? "is-mine" : ""}`} key={message.id}>
+                <span className="chat-avatar" aria-hidden="true">
+                  {message.senderAvatarUrl
+                    ? <img src={message.senderAvatarUrl} alt="" width="32" height="32" />
+                    : message.senderName.slice(0, 1).toUpperCase()}
+                </span>
                 <button
                   className="chat-message__content"
                   type="button"
@@ -572,6 +595,20 @@ export function RoomScreen({
                 </button>
               </div>
             )}
+            <button
+              className="profile-avatar-button"
+              type="button"
+              onClick={() => setProfileOpen(true)}
+              aria-label="Đổi ảnh đại diện, tên và màu trò chuyện"
+              title="Chỉnh hồ sơ"
+            >
+              <span className="profile-avatar" aria-hidden="true">
+                {profile.avatarUrl
+                  ? <img src={profile.avatarUrl} alt="" width="42" height="42" />
+                  : profile.name.slice(0, 1).toUpperCase() || "?"}
+              </span>
+              <Settings2 className="profile-avatar-button__badge" size={13} aria-hidden="true" />
+            </button>
             <input
               ref={chatInputRef}
               id="chat-message"
@@ -586,6 +623,14 @@ export function RoomScreen({
             </button>
           </form>
         </section>
+
+        {profileOpen && (
+          <ProfileDialog
+            profile={profile}
+            onSave={saveProfile}
+            onClose={() => setProfileOpen(false)}
+          />
+        )}
 
         <button
           className="mobile-chat-toggle"
@@ -704,7 +749,11 @@ export function RoomScreen({
           <ul className="member-list">
             {snapshot.members.map((member) => (
               <li key={member.sessionId}>
-                <span className="avatar" aria-hidden="true">{member.name.slice(0, 1).toUpperCase()}</span>
+                <span className="avatar" aria-hidden="true">
+                  {member.avatarUrl
+                    ? <img src={member.avatarUrl} alt="" width="40" height="40" />
+                    : member.name.slice(0, 1).toUpperCase()}
+                </span>
                 <span className="member-name">{member.name}{member.sessionId === sessionId ? " (bạn)" : ""}</span>
                 {member.isHost && <span className="host-badge"><Crown size={13} /> Host</span>}
               </li>
