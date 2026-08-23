@@ -30,6 +30,47 @@ describe("RoomStore", () => {
     });
   });
 
+  it("recreates the same room code and media state after a server restart", () => {
+    const result = store.resume(
+      "ABCD2345",
+      "returning-session",
+      "socket-1",
+      "Minh",
+      null,
+      {
+        currentVideo: { videoId: "dQw4w9WgXcQ", state: "playing", positionSec: 42 },
+        queue: [{
+          videoId: "9bZkp7q19f0",
+          title: "Video tiếp",
+          channelTitle: "Kênh thử nghiệm",
+          thumbnailUrl: "https://i.ytimg.com/vi/9bZkp7q19f0/mqdefault.jpg",
+          addedByName: "Minh",
+        }],
+      },
+    );
+
+    const snapshot = store.snapshot(result.room, "returning-session");
+    expect(result.recovered).toBe(true);
+    expect(snapshot.roomCode).toBe("ABCD2345");
+    expect(snapshot.isHost).toBe(true);
+    expect(snapshot.currentVideo).toMatchObject({ videoId: "dQw4w9WgXcQ", positionSec: 42 });
+    expect(snapshot.queue[0]).toMatchObject({ videoId: "9bZkp7q19f0", title: "Video tiếp" });
+  });
+
+  it("joins an existing room without overwriting its current state", () => {
+    const room = store.create("host", "Host");
+    store.join(room.code, "host", "socket-host", "Host");
+    store.addVideo(room, "host", video("dQw4w9WgXcQ", "Video đang chạy"));
+
+    const result = store.resume(room.code, "guest", "socket-guest", "Khách", null, {
+      currentVideo: null,
+      queue: [],
+    });
+
+    expect(result.recovered).toBe(false);
+    expect(store.snapshot(room, "guest").currentVideo?.videoId).toBe("dQw4w9WgXcQ");
+  });
+
   it("keeps chat out of the room state and advances the queue", () => {
     const room = store.create("host", "Minh");
     store.join(room.code, "host", "socket-1", "Minh");

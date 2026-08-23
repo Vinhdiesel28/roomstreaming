@@ -9,7 +9,7 @@ Watchroom là một MVP watch party miễn phí: tạo phòng tạm thời, xem 
 - Không tài khoản.
 - Không lưu tin nhắn chat.
 - Không lưu lịch sử phòng.
-- Trạng thái phòng chỉ nằm trong RAM của backend và mất khi backend restart.
+- Trạng thái chính nằm trong RAM; mỗi tab đang ở phòng giữ một bản khôi phục tạm trong `sessionStorage` (không gồm chat) để dựng lại đúng mã phòng sau khi backend restart.
 - Mỗi phòng tối đa 20 người, 50 video trong hàng chờ.
 - Host được nhận lại quyền nếu reconnect trong 60 giây; sau đó quyền chuyển cho thành viên online lâu nhất.
 - Video được nhúng trực tiếp bằng YouTube IFrame API. Backend không tải, proxy hay lưu video.
@@ -100,7 +100,7 @@ npm run test:voice
 7. Có thể để trống ba biến `VITE_TURN_*`; chỉ điền nếu đã có dịch vụ TURN.
 8. Render tự sinh `SESSION_SECRET`. Sau khi biết URL chính xác, redeploy cả hai service nếu đã đổi biến môi trường.
 
-Static Site có HTTPS sẵn. Web Service miễn phí có thể ngủ khi không hoạt động và cần một lúc để thức lại; trạng thái phòng trong RAM sẽ mất nếu backend restart hoặc sleep.
+Static Site có HTTPS sẵn. Web Service miễn phí có thể ngủ khi không hoạt động và cần một lúc để thức lại. Trong lúc đó web hiện màn hình chờ và tự kết nối lại. Nếu RAM backend bị xóa, tab quay lại đầu tiên dùng bản tạm trong `sessionStorage` để khôi phục mã phòng, video đang phát và hàng chờ. Nếu chỉ còn link mời mà không còn bản tạm, link vẫn tạo lại một phòng trống với cùng mã; người vào đầu tiên trở thành Host. Chat và voice không được khôi phục.
 
 ### Phương án khác: Web trên Cloudflare Pages
 
@@ -116,7 +116,7 @@ Thêm SPA fallback để `/room/ABCD2345` trả về `index.html`. Nếu dùng P
 
 Client gửi:
 
-- `room:create`, `room:join`, `room:leave`
+- `room:create`, `room:join`, `room:resume`, `room:leave`
 - `queue:add`, `queue:remove`
 - `playback:command`
 - `chat:send`

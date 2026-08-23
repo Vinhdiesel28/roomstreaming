@@ -183,6 +183,54 @@ ol {
   padding: var(--space-xl) clamp(var(--space-md), 4vw, var(--space-2xl)) var(--space-2xl);
 }
 
+.server-wake {
+  width: min(calc(100% - var(--space-xl)), 42rem);
+  min-height: calc(100dvh - 8rem);
+  margin-inline: auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-md);
+  padding: var(--space-xl) 0;
+}
+
+.server-wake__icon {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 4.5rem;
+  height: 4.5rem;
+  flex: 0 0 auto;
+  border: var(--rule-heavy) solid var(--color-ink);
+  border-radius: 44% 56% 52% 48%;
+  background: var(--color-accent);
+  color: var(--color-accent-ink);
+  box-shadow: var(--shadow-contact);
+}
+
+.server-wake__icon .spin {
+  position: absolute;
+  inset-inline-end: -0.25rem;
+  inset-block-end: -0.25rem;
+  padding: var(--space-3xs);
+  border-radius: var(--radius-pill);
+  background: var(--color-surface);
+  color: var(--color-ink);
+  box-sizing: content-box;
+}
+
+.server-wake h1 {
+  max-width: 22ch;
+  font-size: var(--text-lg);
+}
+
+.server-wake p {
+  max-width: 52ch;
+  margin-block-start: var(--space-xs);
+  color: var(--color-ink-soft);
+  font-size: var(--text-sm);
+}
+
 .invite-dialog {
   position: fixed;
   inset: 0;
@@ -1922,6 +1970,12 @@ input[aria-invalid="true"] {
   box-shadow: var(--shadow-raised);
   font-weight: 700;
   animation: toast-in var(--dur-long) var(--ease-out) both;
+}
+
+.toast--notice {
+  border-color: var(--color-mint);
+  background: var(--color-mint-soft);
+  color: var(--color-ink);
 }
 
 .reveal {

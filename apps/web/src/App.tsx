@@ -1,10 +1,15 @@
 import { useCallback, useEffect, useState } from "react";
 import { HomeScreen } from "./components/HomeScreen";
 import { RoomScreen } from "./components/RoomScreen";
+import { ServerWakeScreen } from "./components/ServerWakeScreen";
 import { useWatchParty } from "./hooks/useWatchParty";
 
 export function roomCodeFromPath(pathname = window.location.pathname) {
   return pathname.match(/^\/room\/([A-Z2-9]{8})\/?$/i)?.[1]?.toUpperCase() ?? "";
+}
+
+export function shouldRecoverRoomFromLink(routeCode: string, submittedCode: string) {
+  return Boolean(routeCode && routeCode === submittedCode.toUpperCase());
 }
 
 function navigate(path: string) {
@@ -13,8 +18,8 @@ function navigate(path: string) {
 }
 
 export default function App() {
-  const party = useWatchParty();
   const [routeCode, setRouteCode] = useState(roomCodeFromPath);
+  const party = useWatchParty(routeCode);
 
   useEffect(() => {
     const onPopState = () => {
@@ -32,10 +37,11 @@ export default function App() {
   }, [party]);
 
   const join = useCallback(async (code: string, name: string) => {
-    const snapshot = await party.joinRoom(code, name);
+    const openedFromRoomLink = shouldRecoverRoomFromLink(routeCode, code);
+    const snapshot = await party.joinRoom(code, name, openedFromRoomLink);
     const roomPath = `/room/${snapshot.roomCode}`;
     if (window.location.pathname.toUpperCase() !== roomPath.toUpperCase()) navigate(roomPath);
-  }, [party]);
+  }, [party, routeCode]);
 
   const leave = useCallback(async () => {
     await party.leaveRoom();
@@ -50,11 +56,13 @@ export default function App() {
         </button>
         <p className="nav-promise">YouTube đúng nguồn · chat không lưu</p>
         <span className={`nav-status ${party.connected ? "is-online" : ""}`}>
-          <span />{party.connected ? "Trực tuyến" : "Đang nối"}
+          <span />{party.rejoining ? "Đang vào lại" : party.connected ? "Trực tuyến" : "Đang nối"}
         </span>
       </header>
 
-      {party.snapshot ? (
+      {!party.snapshot && (party.bootstrapping || party.rejoining) ? (
+        <ServerWakeScreen rejoining={party.rejoining} roomCode={routeCode} />
+      ) : party.snapshot ? (
         <RoomScreen
           snapshot={party.snapshot}
           sessionId={party.sessionId}
@@ -80,7 +88,8 @@ export default function App() {
         />
       )}
 
-      {party.error && <div className="toast" role="alert">{party.error}</div>}
+      {party.error && !party.bootstrapping && <div className="toast" role="alert">{party.error}</div>}
+      {party.notice && <div className="toast toast--notice" role="status">{party.notice}</div>}
       {!party.snapshot && (
         <footer className="foot-marquee" aria-label="Thông tin">
           <div className="foot-marquee__track" aria-hidden="true">

@@ -14,7 +14,15 @@ import { SessionService } from "../session/session.service";
 import { YouTubeSearchService } from "../youtube/youtube-search.service";
 import { RateLimiter } from "./rate-limiter";
 import { RoomStore } from "./room.store";
-import type { Ack, ChatMessage, ChatReply, RoomRecord, RoomSnapshot } from "./room.types";
+import type {
+  Ack,
+  ChatMessage,
+  ChatReply,
+  RoomRecord,
+  RoomRecoveryState,
+  RoomResumeResult,
+  RoomSnapshot,
+} from "./room.types";
 import { parseYouTubeVideoId } from "./youtube";
 import {
   MAX_VOICE_PARTICIPANTS,
@@ -118,6 +126,42 @@ export class RoomGateway implements OnGatewayConnection, OnGatewayDisconnect {
       this.broadcastSnapshot(room);
       this.server.to(room.code).emit("member:joined", { name, at: Date.now() });
       return this.rooms.snapshot(room, client.data.sessionId);
+    });
+  }
+
+  @SubscribeMessage("room:resume")
+  async resumeRoom(
+    @ConnectedSocket() client: AuthedSocket,
+    @MessageBody() payload: {
+      roomCode?: unknown;
+      name?: unknown;
+      avatarUrl?: unknown;
+      recovery?: unknown;
+    },
+  ): Promise<Ack<RoomResumeResult>> {
+    return this.safe(client, "resume", 12, 60_000, async () => {
+      const name = this.name(payload?.name);
+      const avatarUrl = this.avatar(payload?.avatarUrl);
+      const code = this.code(payload?.roomCode);
+      const recovery = parseRoomRecovery(payload?.recovery);
+      if (payload?.recovery !== undefined && payload.recovery !== null && !recovery) {
+        throw new Error("INVALID_ROOM_RECOVERY");
+      }
+      const { room, recovered } = this.rooms.resume(
+        code,
+        client.data.sessionId,
+        client.id,
+        name,
+        avatarUrl,
+        recovery,
+      );
+      await client.join(room.code);
+      this.cancelHostTransferIfBack(room, client.data.sessionId);
+      this.broadcastSnapshot(room);
+      return {
+        snapshot: this.rooms.snapshot(room, client.data.sessionId),
+        recovered,
+      };
     });
   }
 
@@ -466,6 +510,7 @@ export class RoomGateway implements OnGatewayConnection, OnGatewayDisconnect {
       INVALID_NAME: "Tên cần từ 2 đến 32 ký tự.",
       INVALID_AVATAR: "Ảnh đại diện không hợp lệ hoặc quá lớn.",
       INVALID_ROOM_CODE: "Mã phòng phải gồm 8 ký tự.",
+      INVALID_ROOM_RECOVERY: "Dữ liệu khôi phục phòng không hợp lệ.",
       INVALID_YOUTUBE_URL: "Link YouTube không hợp lệ hoặc không được hỗ trợ.",
       YOUTUBE_VIDEO_UNAVAILABLE: "Video không tồn tại, đang để riêng tư hoặc không cho phép phát trên web khác.",
       YOUTUBE_API_KEY_MISSING: "Backend chưa được cấu hình YouTube API key.",
@@ -513,4 +558,62 @@ export function parseAvatarUrl(value: unknown): string | null {
     throw new Error("INVALID_AVATAR");
   }
   return value;
+}
+
+export function parseRoomRecovery(value: unknown): RoomRecoveryState | null {
+  if (value === undefined || value === null) return null;
+  if (!value || typeof value !== "object") return null;
+  const input = value as { currentVideo?: unknown; queue?: unknown };
+  if (!Array.isArray(input.queue) || input.queue.length > 50) return null;
+
+  let currentVideo: RoomRecoveryState["currentVideo"] = null;
+  if (input.currentVideo !== null && input.currentVideo !== undefined) {
+    if (!input.currentVideo || typeof input.currentVideo !== "object") return null;
+    const current = input.currentVideo as Record<string, unknown>;
+    const videoId = validVideoId(current.videoId);
+    const state = current.state === "playing" || current.state === "paused" ? current.state : null;
+    const positionSec = validPosition(current.positionSec);
+    if (!videoId || !state || positionSec === null) return null;
+    currentVideo = { videoId, state, positionSec };
+  }
+
+  const queue: RoomRecoveryState["queue"] = [];
+  for (const rawItem of input.queue) {
+    if (!rawItem || typeof rawItem !== "object") return null;
+    const item = rawItem as Record<string, unknown>;
+    const videoId = validVideoId(item.videoId);
+    const title = validRecoveryText(item.title, 200);
+    const channelTitle = validRecoveryText(item.channelTitle, 120);
+    const addedByName = validRecoveryText(item.addedByName, 32);
+    const thumbnailUrl = validThumbnailUrl(item.thumbnailUrl);
+    if (!videoId || !title || !channelTitle || !addedByName || !thumbnailUrl) return null;
+    queue.push({ videoId, title, channelTitle, thumbnailUrl, addedByName });
+  }
+  return { currentVideo, queue };
+}
+
+function validVideoId(value: unknown) {
+  return typeof value === "string" && /^[A-Za-z0-9_-]{11}$/.test(value) ? value : null;
+}
+
+function validPosition(value: unknown) {
+  return typeof value === "number" && Number.isFinite(value)
+    ? Math.max(0, Math.min(value, 24 * 60 * 60))
+    : null;
+}
+
+function validRecoveryText(value: unknown, maxLength: number) {
+  if (typeof value !== "string") return null;
+  const text = value.trim().replace(/\s+/g, " ");
+  return text && text.length <= maxLength ? text : null;
+}
+
+function validThumbnailUrl(value: unknown) {
+  if (typeof value !== "string" || value.length > 500) return null;
+  try {
+    const url = new URL(value);
+    return url.protocol === "https:" ? url.toString() : null;
+  } catch {
+    return null;
+  }
 }

@@ -33,7 +33,7 @@ export class AppController {
     return {
       ok: true,
       rooms: this.rooms.size,
-      features: { profiles: true },
+      features: { profiles: true, roomRecovery: true },
       revision: process.env.RENDER_GIT_COMMIT?.slice(0, 7) ?? "local",
       now: Date.now(),
     };

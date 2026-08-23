@@ -4,6 +4,7 @@ import type {
   MemberInternal,
   Playback,
   QueueItem,
+  RoomRecoveryState,
   RoomRecord,
   RoomSnapshot,
 } from "./room.types";
@@ -30,13 +31,55 @@ export class RoomStore implements OnModuleDestroy {
   create(hostSessionId: string, name: string, avatarUrl: string | null = null) {
     let code = this.generateCode();
     while (this.rooms.has(code)) code = this.generateCode();
+    return this.createRecord(code, hostSessionId, name, avatarUrl);
+  }
+
+  resume(
+    code: string,
+    sessionId: string,
+    socketId: string,
+    name: string,
+    avatarUrl: string | null,
+    recovery: RoomRecoveryState | null,
+  ) {
+    const existing = this.get(code);
+    if (existing) {
+      return {
+        room: this.join(code, sessionId, socketId, name, avatarUrl),
+        recovered: false,
+      };
+    }
+
+    const room = this.createRecord(code.toUpperCase(), sessionId, name, avatarUrl, recovery);
+    this.join(room.code, sessionId, socketId, name, avatarUrl);
+    return { room, recovered: true };
+  }
+
+  private createRecord(
+    code: string,
+    hostSessionId: string,
+    name: string,
+    avatarUrl: string | null,
+    recovery: RoomRecoveryState | null = null,
+  ) {
     const now = Date.now();
     const room: RoomRecord = {
       code,
       hostSessionId,
-      currentVideo: null,
-      queue: [],
-      queueVersion: 0,
+      currentVideo: recovery?.currentVideo
+        ? {
+            ...recovery.currentVideo,
+            changedAt: now,
+            version: 1,
+          }
+        : null,
+      queue: (recovery?.queue ?? []).map((item) => ({
+        itemId: randomUUID(),
+        ...item,
+        addedBySessionId: hostSessionId,
+        addedAt: now,
+      })),
+      queueVersion: recovery?.queue.length ?? 0,
       members: new Map(),
       createdAt: now,
       updatedAt: now,

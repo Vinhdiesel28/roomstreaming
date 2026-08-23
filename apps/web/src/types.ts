@@ -90,3 +90,13 @@ export interface SharedProfile {
   name: string;
   avatarUrl: string | null;
 }
+
+export interface RoomRecoveryState {
+  currentVideo: Playback | null;
+  queue: Array<Pick<QueueItem, "videoId" | "title" | "channelTitle" | "thumbnailUrl" | "addedByName">>;
+}
+
+export interface RoomResumeResult {
+  snapshot: RoomSnapshot;
+  recovered: boolean;
+}

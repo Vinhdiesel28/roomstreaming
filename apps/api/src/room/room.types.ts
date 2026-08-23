@@ -59,6 +59,16 @@ export interface RoomSnapshot {
   serverTime: number;
 }
 
+export interface RoomRecoveryState {
+  currentVideo: Pick<Playback, "videoId" | "state" | "positionSec"> | null;
+  queue: Array<Pick<QueueItem, "videoId" | "title" | "channelTitle" | "thumbnailUrl" | "addedByName">>;
+}
+
+export interface RoomResumeResult {
+  snapshot: RoomSnapshot;
+  recovered: boolean;
+}
+
 export interface ChatReply {
   messageId: string;
   senderName: string;
