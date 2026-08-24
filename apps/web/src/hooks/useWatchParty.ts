@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { io, type Socket } from "socket.io-client";
-import { apiUrl, getSessionToken, resetSessionToken } from "../lib/api";
+import { apiUrl, getServerHealth, getSessionToken, resetSessionToken } from "../lib/api";
 import { loadBrowserProfile } from "../lib/profile";
 import {
   clearActiveRoomSession,
@@ -80,6 +80,7 @@ export function useWatchParty(expectedRoomCode = "") {
   const sessionIdRef = useRef<string | null>(null);
   const expectedRoomCodeRef = useRef(expectedRoomCode.toUpperCase());
   const lastResumedSocketIdRef = useRef<string | null>(null);
+  const supportsRoomRecoveryRef = useRef(false);
 
   useEffect(() => {
     expectedRoomCodeRef.current = expectedRoomCode.toUpperCase();
@@ -138,23 +139,40 @@ export function useWatchParty(expectedRoomCode = "") {
         socket.on("session:ready", ({ sessionId }: { sessionId: string }) => {
           sessionIdRef.current = sessionId;
           setState((current) => ({ ...current, sessionId }));
-          const expectedCode = expectedRoomCodeRef.current;
-          const activeRoom = expectedCode ? loadActiveRoomSession(expectedCode) : null;
-          if (!activeRoom || lastResumedSocketIdRef.current === socket.id) {
-            setState((current) => ({ ...current, bootstrapping: false, rejoining: false }));
-            return;
-          }
+          void getServerHealth()
+            .catch(() => null)
+            .then(async (health) => {
+              if (cancelled) return;
+              supportsRoomRecoveryRef.current = health?.features?.roomRecovery === true;
+              const expectedCode = expectedRoomCodeRef.current;
+              const activeRoom = expectedCode ? loadActiveRoomSession(expectedCode) : null;
+              if (!activeRoom || lastResumedSocketIdRef.current === socket.id) {
+                setState((current) => ({ ...current, bootstrapping: false, rejoining: false }));
+                return;
+              }
 
-          lastResumedSocketIdRef.current = socket.id ?? null;
-          setState((current) => ({ ...current, bootstrapping: false, rejoining: true, error: null }));
-          const profile = loadBrowserProfile();
-          void emitWithAck<RoomResumeResult>(socket, "room:resume", {
-            roomCode: activeRoom.roomCode,
-            name: activeRoom.name,
-            avatarUrl: profile.avatarUrl,
-            recovery: activeRoom.recovery,
-          }, 60_000)
-            .then(({ snapshot, recovered }) => {
+              lastResumedSocketIdRef.current = socket.id ?? null;
+              setState((current) => ({ ...current, rejoining: true, error: null }));
+              const profile = loadBrowserProfile();
+              if (supportsRoomRecoveryRef.current) {
+                return emitWithAck<RoomResumeResult>(socket, "room:resume", {
+                  roomCode: activeRoom.roomCode,
+                  name: activeRoom.name,
+                  avatarUrl: profile.avatarUrl,
+                  recovery: activeRoom.recovery,
+                }, 60_000);
+              }
+
+              const snapshot = await emitWithAck<RoomSnapshot>(socket, "room:join", {
+                roomCode: activeRoom.roomCode,
+                name: activeRoom.name,
+                avatarUrl: profile.avatarUrl,
+              });
+              return { snapshot, recovered: false };
+            })
+            .then((result) => {
+              if (!result) return;
+              const { snapshot, recovered } = result;
               if (cancelled) return;
               updateActiveRoomSnapshot(snapshot, sessionId);
               setState((current) => ({
@@ -246,7 +264,7 @@ export function useWatchParty(expectedRoomCode = "") {
   const joinRoom = useCallback(
     async (roomCode: string, name: string, recoverMissing = false) => {
       const avatarUrl = loadBrowserProfile().avatarUrl;
-      const result = recoverMissing
+      const result = recoverMissing && supportsRoomRecoveryRef.current
         ? await emit<RoomResumeResult>("room:resume", {
             roomCode,
             name,

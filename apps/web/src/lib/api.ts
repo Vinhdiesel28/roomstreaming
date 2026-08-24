@@ -3,8 +3,24 @@ import type { YouTubeSearchResult } from "../types";
 const API_URL = (import.meta.env.VITE_API_URL ?? "http://localhost:3001").replace(/\/$/, "");
 const TOKEN_KEY = "watchroom.session.token";
 
+export interface ServerHealth {
+  ok: boolean;
+  features?: {
+    profiles?: boolean;
+    roomRecovery?: boolean;
+    youtubeSimilar?: boolean;
+  };
+  revision?: string;
+}
+
 export function apiUrl() {
   return API_URL;
+}
+
+export async function getServerHealth(): Promise<ServerHealth> {
+  const response = await fetch(`${API_URL}/health`);
+  if (!response.ok) throw new Error("Máy chủ chưa sẵn sàng.");
+  return response.json() as Promise<ServerHealth>;
 }
 
 export async function getSessionToken() {
@@ -42,6 +58,11 @@ export async function getSimilarYouTubeVideos(videoId: string): Promise<YouTubeS
     message?: string;
   };
   if (!response.ok) {
+    if (response.status === 404) {
+      throw new Error(
+        "Backend trên Render đang dùng phiên bản cũ. Hãy deploy lại dịch vụ roomstreaming-api.",
+      );
+    }
     throw new Error(payload.message ?? "Không lấy được gợi ý video.");
   }
   return payload.items ?? [];

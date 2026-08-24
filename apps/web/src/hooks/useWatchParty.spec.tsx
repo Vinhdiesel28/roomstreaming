@@ -45,6 +45,8 @@ const socketMocks = vi.hoisted(() => {
     emitted.push({ event, payload });
     if (event === "room:resume") {
       callback(null, { ok: true, data: { snapshot, recovered: false } });
+    } else if (event === "room:join") {
+      callback(null, { ok: true, data: snapshot });
     }
     return socket;
   });
@@ -62,9 +64,15 @@ const socketMocks = vi.hoisted(() => {
   return { emitted, handlers, snapshot, socket };
 });
 
+const apiMocks = vi.hoisted(() => ({ supportsRoomRecovery: true }));
+
 vi.mock("socket.io-client", () => ({ io: vi.fn(() => socketMocks.socket) }));
 vi.mock("../lib/api", () => ({
   apiUrl: () => "http://localhost:3001",
+  getServerHealth: vi.fn(async () => ({
+    ok: true,
+    features: { roomRecovery: apiMocks.supportsRoomRecovery },
+  })),
   getSessionToken: vi.fn(async () => "session-token"),
   resetSessionToken: vi.fn(),
 }));
@@ -77,6 +85,7 @@ describe("useWatchParty reconnect", () => {
     socketMocks.handlers.clear();
     socketMocks.socket.id = undefined;
     socketMocks.socket.connected = false;
+    apiMocks.supportsRoomRecovery = true;
   });
 
   it("automatically resumes the saved room on startup and reconnect", async () => {
@@ -109,6 +118,30 @@ describe("useWatchParty reconnect", () => {
 
     expect(socketMocks.emitted.filter((item) => item.event === "room:resume")).toHaveLength(2);
     expect(latest.rejoining).toBe(false);
+    act(() => root.unmount());
+  });
+
+  it("falls back to room:join instead of hanging against an old backend", async () => {
+    apiMocks.supportsRoomRecovery = false;
+    saveActiveRoomSession("ABCD2345", "Vinh");
+    let latest = null as unknown as ReturnType<typeof useWatchParty>;
+    function Probe() {
+      latest = useWatchParty("ABCD2345");
+      return null;
+    }
+
+    const container = document.createElement("div");
+    const root = createRoot(container);
+    await act(async () => {
+      root.render(<Probe />);
+      await Promise.resolve();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(socketMocks.emitted.some((item) => item.event === "room:resume")).toBe(false);
+    expect(socketMocks.emitted.some((item) => item.event === "room:join")).toBe(true);
+    expect(latest.snapshot?.roomCode).toBe("ABCD2345");
     act(() => root.unmount());
   });
 });

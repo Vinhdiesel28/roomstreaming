@@ -27,4 +27,16 @@ describe("YouTube API client", () => {
       "/api/youtube/similar?videoId=dQw4w9WgXcQ",
     );
   });
+
+  it("explains when Render is still running an old backend", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({
+      ok: false,
+      status: 404,
+      json: async () => ({ message: "Cannot GET /api/youtube/similar" }),
+    }));
+
+    await expect(getSimilarYouTubeVideos("dQw4w9WgXcQ")).rejects.toThrow(
+      "Backend trên Render đang dùng phiên bản cũ",
+    );
+  });
 });
