@@ -1282,6 +1282,7 @@ input[aria-invalid="true"] {
 }
 
 .search-results > li {
+  flex: 0 0 auto;
   min-width: 0;
 }
 

@@ -15,6 +15,8 @@ import { RoomStore } from "./room/room.store";
 import { RateLimiter } from "./room/rate-limiter";
 import { YouTubeSearchService } from "./youtube/youtube-search.service";
 
+const MAX_RECOMMENDATION_EXCLUSIONS = 100;
+
 @Controller()
 export class AppController {
   constructor(
@@ -92,7 +94,7 @@ export class AppController {
       throw new BadRequestException("Video YouTube không hợp lệ.");
     }
     const contextVideoIds = parseVideoIdList(contextInput, 4).filter((id) => id !== videoId);
-    const excludedVideoIds = parseVideoIdList(excludeInput, 20);
+    const excludedVideoIds = parseVideoIdList(excludeInput, MAX_RECOMMENDATION_EXCLUSIONS);
     if (!this.limiter.allow(`youtube-similar:${ip}`, 5, 60_000)) {
       throw new HttpException(
         "Bạn đang lấy gợi ý quá nhanh. Chờ một phút rồi thử lại.",

@@ -43,6 +43,20 @@ describe("YouTube API client", () => {
     expect(url).toContain("exclude=aaaaaaaaaaa");
   });
 
+  it("keeps a longer exclusion list so suggestions do not cycle back too soon", async () => {
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true, json: async () => ({ items: [] }) });
+    vi.stubGlobal("fetch", fetchMock);
+    const excludedVideoIds = Array.from(
+      { length: 30 },
+      (_, index) => index.toString().padStart(11, "a"),
+    );
+
+    await getSimilarYouTubeVideos("dQw4w9WgXcQ", [], excludedVideoIds);
+
+    const url = new URL(String(fetchMock.mock.calls[0]?.[0]));
+    expect(url.searchParams.get("exclude")?.split(",")).toHaveLength(30);
+  });
+
   it("explains when Render is still running an old backend", async () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue({
       ok: false,

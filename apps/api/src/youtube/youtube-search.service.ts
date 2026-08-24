@@ -60,6 +60,7 @@ const CACHE_TTL_MS = 5 * 60 * 1000;
 const SIMILAR_CACHE_TTL_MS = 6 * 60 * 60 * 1000;
 const PLAYABLE_CACHE_TTL_MS = 6 * 60 * 60 * 1000;
 const MAX_CACHE_ENTRIES = 100;
+const MAX_RECOMMENDATION_EXCLUSIONS = 100;
 
 @Injectable()
 export class YouTubeSearchService {
@@ -112,7 +113,9 @@ export class YouTubeSearchService {
     const videoId = input.trim();
     if (!VIDEO_ID_PATTERN.test(videoId)) throw new Error("YOUTUBE_VIDEO_NOT_FOUND");
     const contextVideoIds = validUniqueVideoIds(contextInput, new Set([videoId])).slice(0, 4);
-    const excludedVideoIds = new Set(validUniqueVideoIds(excludedInput).slice(0, 20));
+    const excludedVideoIds = new Set(
+      validUniqueVideoIds(excludedInput).slice(0, MAX_RECOMMENDATION_EXCLUSIONS),
+    );
     const cacheKey = [videoId, ...contextVideoIds].join(":");
 
     const cached = this.similarCache.get(cacheKey);

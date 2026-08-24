@@ -12,7 +12,7 @@ import type {
 const CODE_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
 const MAX_MEMBERS = 20;
 const MAX_QUEUE = 50;
-const MAX_RECENT_VIDEOS = 5;
+const MAX_RECENT_VIDEOS = 20;
 const MAX_SKIPPED_VIDEOS = 20;
 
 @Injectable()

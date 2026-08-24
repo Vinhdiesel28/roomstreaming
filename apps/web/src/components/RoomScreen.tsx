@@ -37,6 +37,9 @@ import { ProfileDialog } from "./ProfileDialog";
 import { YouTubePlayer } from "./YouTubePlayer";
 import { VoiceChat } from "./VoiceChat";
 
+const MAX_RECOMMENDATION_EXCLUSIONS = 100;
+const MAX_SEEN_RECOMMENDATIONS = 60;
+
 interface Props {
   snapshot: RoomSnapshot;
   sessionId: string | null;
@@ -182,6 +185,7 @@ export function RoomScreen({
   const [lastReadMessageCount, setLastReadMessageCount] = useState(messages.length);
   const chatEndRef = useRef<HTMLDivElement>(null);
   const chatInputRef = useRef<HTMLInputElement>(null);
+  const shownRecommendationIdsRef = useRef(new Set<string>());
   const wakeLockStatus = useScreenWakeLock(snapshot.currentVideo?.state === "playing");
   const unreadMessageCount = Math.max(0, messages.length - lastReadMessageCount);
   const recommendationContextVideoIds = [...new Set([
@@ -191,9 +195,12 @@ export function RoomScreen({
     .filter((videoId) => videoId !== snapshot.currentVideo?.videoId)
     .slice(0, 4);
   const recommendationExcludedVideoIds = [...new Set([
-    ...(snapshot.skippedVideoIds ?? []),
+    snapshot.currentVideo?.videoId,
     ...snapshot.queue.map((item) => item.videoId),
-  ])].slice(0, 20);
+    ...(snapshot.recentVideoIds ?? []),
+    ...(snapshot.skippedVideoIds ?? []),
+  ].filter((videoId): videoId is string => Boolean(videoId)))]
+    .slice(0, MAX_RECOMMENDATION_EXCLUSIONS);
   const recommendationContextKey = recommendationContextVideoIds.join(",");
   const recommendationExcludedKey = recommendationExcludedVideoIds.join(",");
 
@@ -208,6 +215,10 @@ export function RoomScreen({
         "Đã lưu trên thiết bị này. API chưa đồng bộ nên bạn bè có thể chưa thấy avatar mới.",
       ));
   };
+
+  useEffect(() => {
+    shownRecommendationIdsRef.current.clear();
+  }, [snapshot.roomCode]);
 
   useEffect(() => {
     if (typeof window.matchMedia !== "function") return;
@@ -254,16 +265,28 @@ export function RoomScreen({
 
     const loadSimilarVideos = async () => {
       try {
+        const previouslyShownVideoIds = [...shownRecommendationIdsRef.current]
+          .slice(-MAX_SEEN_RECOMMENDATIONS);
+        const excludedVideoIds = [...new Set([
+          ...recommendationExcludedVideoIds,
+          ...previouslyShownVideoIds,
+        ])].slice(0, MAX_RECOMMENDATION_EXCLUSIONS);
         const [items] = await Promise.all([
           getSimilarYouTubeVideos(
             videoId,
             recommendationContextVideoIds,
-            recommendationExcludedVideoIds,
+            excludedVideoIds,
           ),
           new Promise((resolve) => window.setTimeout(resolve, 300)),
         ]);
         if (cancelled) return;
         setSimilarResults(items);
+        for (const item of items) shownRecommendationIdsRef.current.add(item.videoId);
+        while (shownRecommendationIdsRef.current.size > MAX_SEEN_RECOMMENDATIONS) {
+          const oldestVideoId = shownRecommendationIdsRef.current.values().next().value;
+          if (!oldestVideoId) break;
+          shownRecommendationIdsRef.current.delete(oldestVideoId);
+        }
         if (items.length === 0) {
           setSimilarError("Chưa tìm được bài phù hợp có thể phát trong phòng.");
         }
