@@ -184,13 +184,14 @@ export class RoomStore implements OnModuleDestroy {
     room: RoomRecord,
     sessionId: string,
     video: Pick<QueueItem, "videoId" | "title" | "channelTitle" | "thumbnailUrl">,
+    queueOnly = false,
   ) {
     const member = this.member(room, sessionId);
     if (!member) throw new Error("NOT_IN_ROOM");
     if (room.queue.length >= MAX_QUEUE) throw new Error("QUEUE_FULL");
     room.skippedVideoIds = room.skippedVideoIds.filter((id) => id !== video.videoId);
     const now = Date.now();
-    if (!room.currentVideo) {
+    if (!room.currentVideo && !queueOnly) {
       room.currentVideo = {
         videoId: video.videoId,
         state: "paused",
@@ -208,6 +209,30 @@ export class RoomStore implements OnModuleDestroy {
       });
       room.queueVersion += 1;
     }
+    this.touch(room);
+  }
+
+  playVideoDirectly(
+    room: RoomRecord,
+    sessionId: string,
+    video: Pick<QueueItem, "videoId" | "title" | "channelTitle" | "thumbnailUrl">,
+  ) {
+    if (room.hostSessionId !== sessionId) throw new Error("HOST_ONLY");
+    const now = Date.now();
+    this.rememberCurrentVideo(room);
+    const queueIndex = room.queue.findIndex((item) => item.videoId === video.videoId);
+    if (queueIndex >= 0) {
+      room.queue.splice(queueIndex, 1);
+      room.queueVersion += 1;
+    }
+    room.skippedVideoIds = room.skippedVideoIds.filter((id) => id !== video.videoId);
+    room.currentVideo = {
+      videoId: video.videoId,
+      state: "playing",
+      positionSec: 0,
+      changedAt: now,
+      version: (room.currentVideo?.version ?? 0) + 1,
+    };
     this.touch(room);
   }
 

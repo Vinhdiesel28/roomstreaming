@@ -298,7 +298,14 @@ export function useWatchParty(expectedRoomCode = "") {
     setState((current) => ({ ...current, snapshot: null, messages: [] }));
   }, [emit]);
 
-  const addVideo = useCallback((url: string) => emit<RoomSnapshot>("queue:add", { url }), [emit]);
+  const addVideo = useCallback(
+    (url: string, queueOnly = false) => emit<RoomSnapshot>("queue:add", { url, queueOnly }),
+    [emit],
+  );
+  const playVideoDirectly = useCallback(
+    (url: string) => emit<RoomSnapshot>("video:play", { url }),
+    [emit],
+  );
   const removeVideo = useCallback(
     (itemId: string) => emit<RoomSnapshot>("queue:remove", { itemId }),
     [emit],
@@ -329,6 +336,7 @@ export function useWatchParty(expectedRoomCode = "") {
     joinRoom,
     leaveRoom,
     addVideo,
+    playVideoDirectly,
     removeVideo,
     playQueuedVideo,
     command,

@@ -285,14 +285,30 @@ export class RoomGateway implements OnGatewayConnection, OnGatewayDisconnect {
   @SubscribeMessage("queue:add")
   async addVideo(
     @ConnectedSocket() client: AuthedSocket,
-    @MessageBody() payload: { url?: unknown },
+    @MessageBody() payload: { url?: unknown; queueOnly?: unknown },
   ): Promise<Ack<RoomSnapshot>> {
     return this.safe(client, "queue-add", 8, 30_000, async () => {
       const room = this.requireRoom(client);
       const videoId = parseYouTubeVideoId(payload?.url);
       if (!videoId) throw new Error("INVALID_YOUTUBE_URL");
       const video = await this.youtube.ensurePlayable(videoId);
-      this.rooms.addVideo(room, client.data.sessionId, video);
+      this.rooms.addVideo(room, client.data.sessionId, video, payload?.queueOnly === true);
+      this.broadcastSnapshot(room);
+      return this.rooms.snapshot(room, client.data.sessionId);
+    });
+  }
+
+  @SubscribeMessage("video:play")
+  async playVideoDirectly(
+    @ConnectedSocket() client: AuthedSocket,
+    @MessageBody() payload: { url?: unknown },
+  ): Promise<Ack<RoomSnapshot>> {
+    return this.safe(client, "video-play", 10, 30_000, async () => {
+      const room = this.requireRoom(client);
+      const videoId = parseYouTubeVideoId(payload?.url);
+      if (!videoId) throw new Error("INVALID_YOUTUBE_URL");
+      const video = await this.youtube.ensurePlayable(videoId);
+      this.rooms.playVideoDirectly(room, client.data.sessionId, video);
       this.broadcastSnapshot(room);
       return this.rooms.snapshot(room, client.data.sessionId);
     });

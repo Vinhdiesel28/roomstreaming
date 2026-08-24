@@ -107,6 +107,22 @@ describe("RoomStore", () => {
     expect(room.queue.map((queued) => queued.videoId)).toEqual(["aaaaaaaaaaa"]);
     expect(room.recentVideoIds).toEqual(["dQw4w9WgXcQ"]);
   });
+
+  it("keeps plus-button videos queued and lets only the host play a result directly", () => {
+    const room = store.create("host", "Minh");
+    store.join(room.code, "host", "socket-host", "Minh");
+    store.join(room.code, "guest", "socket-guest", "Bạn", null);
+    const queued = video("aaaaaaaaaaa", "Video từ nút cộng");
+
+    store.addVideo(room, "guest", queued, true);
+    expect(room.currentVideo).toBeNull();
+    expect(room.queue.map((item) => item.videoId)).toEqual(["aaaaaaaaaaa"]);
+    expect(() => store.playVideoDirectly(room, "guest", queued)).toThrow("HOST_ONLY");
+
+    store.playVideoDirectly(room, "host", queued);
+    expect(room.currentVideo).toMatchObject({ videoId: "aaaaaaaaaaa", state: "playing" });
+    expect(room.queue).toEqual([]);
+  });
 });
 
 function video(videoId: string, title: string) {

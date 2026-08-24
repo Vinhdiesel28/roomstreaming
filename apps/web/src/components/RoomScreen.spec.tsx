@@ -31,10 +31,11 @@ const snapshot: RoomSnapshot = {
 };
 
 describe("RoomScreen layout", () => {
-  it("adds a video when any part of a result row is clicked", () => {
+  it("plays from the result body and reserves plus for adding to the queue", () => {
     const container = document.createElement("div");
     const root = createRoot(container);
     const onAdd = vi.fn();
+    const onPlay = vi.fn();
 
     act(() => {
       root.render(
@@ -46,17 +47,23 @@ describe("RoomScreen layout", () => {
             thumbnailUrl: "https://i.ytimg.com/test.jpg",
           }}
           state="idle"
-          disabled={false}
+          interactionDisabled={false}
+          canPlayNow
+          playing={false}
+          onPlay={onPlay}
           onAdd={onAdd}
         />,
       );
     });
 
-    const resultButton = container.querySelector<HTMLButtonElement>(".search-result");
-    act(() => resultButton?.click());
+    const playButton = container.querySelector<HTMLButtonElement>(".search-result__main");
+    const addButton = container.querySelector<HTMLButtonElement>(".search-result__add");
+    act(() => playButton?.click());
+    act(() => addButton?.click());
 
-    expect(resultButton?.querySelector("img")).not.toBeNull();
-    expect(resultButton?.textContent).toContain("Video thử nghiệm");
+    expect(playButton?.querySelector("img")).not.toBeNull();
+    expect(playButton?.textContent).toContain("Video thử nghiệm");
+    expect(onPlay).toHaveBeenCalledTimes(1);
     expect(onAdd).toHaveBeenCalledTimes(1);
     act(() => root.unmount());
   });
@@ -71,6 +78,7 @@ describe("RoomScreen layout", () => {
         socket={null}
         onLeave={vi.fn(async () => undefined)}
         onAddVideo={vi.fn(async () => undefined)}
+        onPlayVideoDirectly={vi.fn(async () => undefined)}
         onRemoveVideo={vi.fn(async () => undefined)}
         onPlayVideo={vi.fn(async () => undefined)}
         onCommand={vi.fn(async () => undefined)}
@@ -126,6 +134,7 @@ describe("RoomScreen layout", () => {
         socket={null}
         onLeave={vi.fn(async () => undefined)}
         onAddVideo={vi.fn(async () => undefined)}
+        onPlayVideoDirectly={vi.fn(async () => undefined)}
         onRemoveVideo={vi.fn(async () => undefined)}
         onPlayVideo={vi.fn(async () => undefined)}
         onCommand={vi.fn(async () => undefined)}
@@ -159,6 +168,7 @@ describe("RoomScreen layout", () => {
         socket={null}
         onLeave={vi.fn(async () => undefined)}
         onAddVideo={vi.fn(async () => undefined)}
+        onPlayVideoDirectly={vi.fn(async () => undefined)}
         onRemoveVideo={vi.fn(async () => undefined)}
         onPlayVideo={vi.fn(async () => undefined)}
         onCommand={vi.fn(async () => undefined)}
@@ -203,6 +213,7 @@ describe("RoomScreen layout", () => {
         socket={null}
         onLeave={vi.fn(async () => undefined)}
         onAddVideo={vi.fn(async () => undefined)}
+        onPlayVideoDirectly={vi.fn(async () => undefined)}
         onRemoveVideo={vi.fn(async () => undefined)}
         onPlayVideo={vi.fn(async () => undefined)}
         onCommand={vi.fn(async () => undefined)}
@@ -248,7 +259,8 @@ describe("RoomScreen layout", () => {
           connected
           socket={null}
           onLeave={vi.fn(async () => undefined)}
-          onAddVideo={vi.fn(async () => undefined)}
+        onAddVideo={vi.fn(async () => undefined)}
+        onPlayVideoDirectly={vi.fn(async () => undefined)}
           onRemoveVideo={vi.fn(async () => undefined)}
           onPlayVideo={vi.fn(async () => undefined)}
           onCommand={vi.fn(async () => undefined)}

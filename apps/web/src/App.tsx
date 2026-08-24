@@ -71,6 +71,7 @@ export default function App() {
           socket={party.socket}
           onLeave={leave}
           onAddVideo={party.addVideo}
+          onPlayVideoDirectly={party.playVideoDirectly}
           onRemoveVideo={party.removeVideo}
           onPlayVideo={party.playQueuedVideo}
           onCommand={party.command}

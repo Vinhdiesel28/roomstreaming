@@ -7,6 +7,7 @@ import {
   LoaderCircle,
   LogOut,
   MessageCircle,
+  Play,
   Plus,
   Reply,
   Search,
@@ -43,7 +44,8 @@ interface Props {
   connected: boolean;
   socket: Socket | null;
   onLeave: () => Promise<void>;
-  onAddVideo: (url: string) => Promise<unknown>;
+  onAddVideo: (url: string, queueOnly?: boolean) => Promise<unknown>;
+  onPlayVideoDirectly: (url: string) => Promise<unknown>;
   onRemoveVideo: (itemId: string) => Promise<unknown>;
   onPlayVideo: (itemId: string) => Promise<unknown>;
   onCommand: (action: PlaybackCommand, positionSec?: number) => Promise<unknown>;
@@ -56,12 +58,23 @@ type VideoResultState = "idle" | "loading" | "success" | "error";
 interface VideoResultRowProps {
   result: YouTubeSearchResult;
   state: VideoResultState;
-  disabled: boolean;
+  interactionDisabled: boolean;
+  canPlayNow: boolean;
+  playing: boolean;
+  onPlay: () => void;
   onAdd: () => void;
 }
 
-export function VideoResultRow({ result, state, disabled, onAdd }: VideoResultRowProps) {
-  const label = state === "loading"
+export function VideoResultRow({
+  result,
+  state,
+  interactionDisabled,
+  canPlayNow,
+  playing,
+  onPlay,
+  onAdd,
+}: VideoResultRowProps) {
+  const addLabel = state === "loading"
     ? `Đang thêm ${result.title}`
     : state === "success"
       ? `Đã thêm ${result.title}`
@@ -70,14 +83,14 @@ export function VideoResultRow({ result, state, disabled, onAdd }: VideoResultRo
         : `Thêm ${result.title} vào hàng chờ`;
 
   return (
-    <li>
+    <li className="search-result" data-state={state === "idle" ? undefined : state}>
       <button
-        className="search-result"
+        className="search-result__main"
         type="button"
-        onClick={onAdd}
-        disabled={disabled}
-        data-state={state === "idle" ? undefined : state}
-        aria-label={label}
+        onClick={onPlay}
+        disabled={!canPlayNow || interactionDisabled}
+        aria-label={canPlayNow ? `Phát ngay ${result.title}` : `Chỉ Host có thể phát ${result.title}`}
+        title={canPlayNow ? "Phát ngay" : "Chỉ Host được phát ngay"}
       >
         <img
           src={result.thumbnailUrl}
@@ -91,6 +104,18 @@ export function VideoResultRow({ result, state, disabled, onAdd }: VideoResultRo
           <strong>{result.title}</strong>
           <span>{result.channelTitle}</span>
         </span>
+        <span className="search-result__play" aria-hidden="true">
+          {playing ? <LoaderCircle className="spin" size={18} /> : <Play size={18} />}
+        </span>
+      </button>
+      <button
+        className="search-result__add"
+        type="button"
+        onClick={onAdd}
+        disabled={interactionDisabled || state === "success"}
+        aria-label={addLabel}
+        title="Thêm vào hàng chờ"
+      >
         <span className="search-result__status" aria-hidden="true">
           {state === "loading" ? (
             <LoaderCircle className="spin" size={18} />
@@ -115,6 +140,7 @@ export function RoomScreen({
   socket,
   onLeave,
   onAddVideo,
+  onPlayVideoDirectly,
   onRemoveVideo,
   onPlayVideo,
   onCommand,
@@ -128,6 +154,7 @@ export function RoomScreen({
   const [searchBusy, setSearchBusy] = useState(false);
   const [searchError, setSearchError] = useState<string | null>(null);
   const [addingVideoId, setAddingVideoId] = useState<string | null>(null);
+  const [playingVideoId, setPlayingVideoId] = useState<string | null>(null);
   const [addedVideoId, setAddedVideoId] = useState<string | null>(null);
   const [failedVideoId, setFailedVideoId] = useState<string | null>(null);
   const [similarResults, setSimilarResults] = useState<YouTubeSearchResult[]>([]);
@@ -317,7 +344,7 @@ export function RoomScreen({
     setFailedVideoId(null);
     setSearchError(null);
     try {
-      await onAddVideo(result.videoId);
+      await onAddVideo(result.videoId, true);
       setAddedVideoId(result.videoId);
     } catch (cause) {
       setFailedVideoId(result.videoId);
@@ -333,13 +360,29 @@ export function RoomScreen({
     setFailedVideoId(null);
     setSimilarError(null);
     try {
-      await onAddVideo(result.videoId);
+      await onAddVideo(result.videoId, true);
       setAddedVideoId(result.videoId);
     } catch (cause) {
       setFailedVideoId(result.videoId);
       setSimilarError(cause instanceof Error ? cause.message : "Không thể thêm video.");
     } finally {
       setAddingVideoId(null);
+    }
+  };
+
+  const playResultNow = async (
+    result: YouTubeSearchResult,
+    setSourceError: (message: string | null) => void,
+  ) => {
+    if (!snapshot.isHost) return;
+    setPlayingVideoId(result.videoId);
+    setSourceError(null);
+    try {
+      await onPlayVideoDirectly(result.videoId);
+    } catch (cause) {
+      setSourceError(cause instanceof Error ? cause.message : "Không thể phát video này.");
+    } finally {
+      setPlayingVideoId(null);
     }
   };
 
@@ -515,7 +558,10 @@ export function RoomScreen({
                         key={result.videoId}
                         result={result}
                         state={isAdding ? "loading" : isAdded ? "success" : isFailed ? "error" : "idle"}
-                        disabled={Boolean(addingVideoId) || isAdded}
+                        interactionDisabled={Boolean(addingVideoId || playingVideoId)}
+                        canPlayNow={snapshot.isHost}
+                        playing={playingVideoId === result.videoId}
+                        onPlay={() => void playResultNow(result, setSearchError)}
                         onAdd={() => void addSearchResult(result)}
                       />
                     );
@@ -706,7 +752,10 @@ export function RoomScreen({
                   key={result.videoId}
                   result={result}
                   state={isAdding ? "loading" : isAdded ? "success" : isFailed ? "error" : "idle"}
-                  disabled={Boolean(addingVideoId) || isAdded}
+                  interactionDisabled={Boolean(addingVideoId || playingVideoId)}
+                  canPlayNow={snapshot.isHost}
+                  playing={playingVideoId === result.videoId}
+                  onPlay={() => void playResultNow(result, setSimilarError)}
                   onAdd={() => void addSimilarResult(result)}
                 />
               );
