@@ -33,6 +33,8 @@ export interface RoomSnapshot {
   hostSessionId: string;
   isHost: boolean;
   currentVideo: Playback | null;
+  recentVideoIds?: string[];
+  skippedVideoIds?: string[];
   queue: QueueItem[];
   queueVersion: number;
   members: Member[];

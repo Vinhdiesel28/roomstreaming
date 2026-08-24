@@ -28,6 +28,21 @@ describe("YouTube API client", () => {
     );
   });
 
+  it("sends recent and skipped video context without exposing user data", async () => {
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true, json: async () => ({ items: [] }) });
+    vi.stubGlobal("fetch", fetchMock);
+
+    await getSimilarYouTubeVideos(
+      "dQw4w9WgXcQ",
+      ["9bZkp7q19f0"],
+      ["aaaaaaaaaaa"],
+    );
+
+    const url = String(fetchMock.mock.calls[0]?.[0]);
+    expect(url).toContain("context=9bZkp7q19f0");
+    expect(url).toContain("exclude=aaaaaaaaaaa");
+  });
+
   it("explains when Render is still running an old backend", async () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue({
       ok: false,

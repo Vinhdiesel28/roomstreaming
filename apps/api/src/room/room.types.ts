@@ -40,6 +40,8 @@ export interface RoomRecord {
   code: string;
   hostSessionId: string;
   currentVideo: Playback | null;
+  recentVideoIds: string[];
+  skippedVideoIds: string[];
   queue: QueueItem[];
   queueVersion: number;
   members: Map<string, MemberInternal>;
@@ -53,6 +55,8 @@ export interface RoomSnapshot {
   hostSessionId: string;
   isHost: boolean;
   currentVideo: Playback | null;
+  recentVideoIds: string[];
+  skippedVideoIds: string[];
   queue: QueueItem[];
   queueVersion: number;
   members: MemberPublic[];

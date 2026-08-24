@@ -12,6 +12,8 @@ import type {
 const CODE_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
 const MAX_MEMBERS = 20;
 const MAX_QUEUE = 50;
+const MAX_RECENT_VIDEOS = 5;
+const MAX_SKIPPED_VIDEOS = 20;
 
 @Injectable()
 export class RoomStore implements OnModuleDestroy {
@@ -73,6 +75,8 @@ export class RoomStore implements OnModuleDestroy {
             version: 1,
           }
         : null,
+      recentVideoIds: [],
+      skippedVideoIds: [],
       queue: (recovery?.queue ?? []).map((item) => ({
         itemId: randomUUID(),
         ...item,
@@ -157,6 +161,8 @@ export class RoomStore implements OnModuleDestroy {
       hostSessionId: room.hostSessionId,
       isHost: room.hostSessionId === viewerSessionId,
       currentVideo: room.currentVideo ? { ...room.currentVideo } : null,
+      recentVideoIds: [...room.recentVideoIds],
+      skippedVideoIds: [...room.skippedVideoIds],
       queue: room.queue.map((item) => ({ ...item })),
       queueVersion: room.queueVersion,
       members: [...room.members.values()]
@@ -182,6 +188,7 @@ export class RoomStore implements OnModuleDestroy {
     const member = this.member(room, sessionId);
     if (!member) throw new Error("NOT_IN_ROOM");
     if (room.queue.length >= MAX_QUEUE) throw new Error("QUEUE_FULL");
+    room.skippedVideoIds = room.skippedVideoIds.filter((id) => id !== video.videoId);
     const now = Date.now();
     if (!room.currentVideo) {
       room.currentVideo = {
@@ -211,6 +218,7 @@ export class RoomStore implements OnModuleDestroy {
     const [item] = room.queue.splice(index, 1);
     if (!item) throw new Error("QUEUE_ITEM_NOT_FOUND");
     const now = Date.now();
+    this.rememberCurrentVideo(room);
     room.queueVersion += 1;
     room.currentVideo = {
       videoId: item.videoId,
@@ -229,6 +237,7 @@ export class RoomStore implements OnModuleDestroy {
     if (room.hostSessionId !== sessionId && item?.addedBySessionId !== sessionId) {
       throw new Error("FORBIDDEN");
     }
+    if (item) this.rememberSkippedVideo(room, item.videoId);
     room.queue.splice(index, 1);
     room.queueVersion += 1;
     this.touch(room);
@@ -243,6 +252,10 @@ export class RoomStore implements OnModuleDestroy {
     if (room.hostSessionId !== sessionId) throw new Error("HOST_ONLY");
     const now = Date.now();
     if (action === "NEXT") {
+      if (Number(positionSec ?? 0) < 0 && room.currentVideo) {
+        this.rememberSkippedVideo(room, room.currentVideo.videoId);
+      }
+      this.rememberCurrentVideo(room);
       const next = room.queue.shift();
       room.queueVersion += 1;
       room.currentVideo = next
@@ -290,6 +303,22 @@ export class RoomStore implements OnModuleDestroy {
     const now = Date.now();
     room.updatedAt = now;
     room.expiresAt = now + this.ttlMs;
+  }
+
+  private rememberCurrentVideo(room: RoomRecord) {
+    const videoId = room.currentVideo?.videoId;
+    if (!videoId) return;
+    room.recentVideoIds = [
+      videoId,
+      ...room.recentVideoIds.filter((id) => id !== videoId),
+    ].slice(0, MAX_RECENT_VIDEOS);
+  }
+
+  private rememberSkippedVideo(room: RoomRecord, videoId: string) {
+    room.skippedVideoIds = [
+      videoId,
+      ...room.skippedVideoIds.filter((id) => id !== videoId),
+    ].slice(0, MAX_SKIPPED_VIDEOS);
   }
 
   private newMember(sessionId: string, name: string, avatarUrl: string | null): MemberInternal {

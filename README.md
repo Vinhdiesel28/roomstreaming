@@ -14,6 +14,7 @@ Watchroom là một MVP watch party miễn phí: tạo phòng tạm thời, xem 
 - Host được nhận lại quyền nếu reconnect trong 60 giây; sau đó quyền chuyển cho thành viên online lâu nhất.
 - Video được nhúng trực tiếp bằng YouTube IFrame API. Backend không tải, proxy hay lưu video.
 - Có thể dán link hoặc tìm video trong phòng. Tìm kiếm dùng YouTube Data API v3 qua backend để không lộ API key trong bundle frontend.
+- Bộ đề xuất chỉ giữ tối đa 5 video vừa phát và các video bị bỏ qua/xóa trong RAM của phòng; không gắn dữ liệu này với tài khoản hay lưu dài hạn.
 - Voice chat dùng WebRTC audio, tối đa 8 người. Âm thanh đi trực tiếp giữa các trình duyệt; backend chỉ chuyển tín hiệu kết nối và không ghi âm.
 
 Thiết kế này cố ý bỏ MongoDB để giảm độ phức tạp và giữ chi phí bằng 0. Trên Render Free, một phòng đang hoạt động tiếp tục giữ backend thức nhờ lưu lượng WebSocket; phòng không hoạt động không cần tồn tại lâu dài.
@@ -62,7 +63,7 @@ Nếu chưa đặt key hoặc hết quota tìm kiếm trong ngày, chức năng 
 2. Đặt API key nhận được vào `LASTFM_API_KEY` của backend.
 3. Khởi động lại backend; `/health` sẽ trả `"musicRecommendations": true`.
 
-Khi có key, backend tách ca sĩ và tên bài từ video đang phát, lấy các bài tương tự từ Last.fm, ánh xạ chúng sang video YouTube có thể nhúng rồi xếp hạng theo độ khớp, thời lượng và độ phổ biến. Kết quả được trộn với video mới cùng kênh, giới hạn lặp tác giả và cache 6 giờ. Nếu Last.fm lỗi hoặc chưa có key, danh sách cùng kênh vẫn hoạt động như trước. Không có tên người dùng, chat hay lịch sử phòng nào được gửi tới Last.fm.
+Khi có key, backend tách ca sĩ và tên bài từ video đang phát cùng tối đa 5 bài gần đây, lấy các bài tương tự từ Last.fm, ánh xạ chúng sang video YouTube có thể nhúng rồi xếp hạng theo độ khớp, thời lượng và độ phổ biến. Các bản official/VEVO/Topic được ưu tiên; live, lyrics, cover và karaoke bị hạ điểm, còn nhiều phiên bản của cùng một bài được gộp lại. Video bị bỏ qua, bị xóa hoặc đã nằm trong hàng chờ sẽ không được đề xuất lại. Kết quả được cache 6 giờ. Nếu Last.fm lỗi hoặc chưa có key, danh sách cùng kênh vẫn hoạt động như trước. Không có tên người dùng, chat hay lịch sử phòng nào được gửi tới Last.fm.
 
 ### Voice chat local
 

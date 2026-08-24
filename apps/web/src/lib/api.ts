@@ -50,10 +50,15 @@ export async function searchYouTube(query: string): Promise<YouTubeSearchResult[
   return payload.items ?? [];
 }
 
-export async function getSimilarYouTubeVideos(videoId: string): Promise<YouTubeSearchResult[]> {
-  const response = await fetch(
-    `${API_URL}/api/youtube/similar?videoId=${encodeURIComponent(videoId)}`,
-  );
+export async function getSimilarYouTubeVideos(
+  videoId: string,
+  contextVideoIds: string[] = [],
+  excludedVideoIds: string[] = [],
+): Promise<YouTubeSearchResult[]> {
+  const params = new URLSearchParams({ videoId });
+  if (contextVideoIds.length > 0) params.set("context", contextVideoIds.slice(0, 4).join(","));
+  if (excludedVideoIds.length > 0) params.set("exclude", excludedVideoIds.slice(0, 20).join(","));
+  const response = await fetch(`${API_URL}/api/youtube/similar?${params}`);
   const payload = (await response.json().catch(() => ({}))) as {
     items?: YouTubeSearchResult[];
     message?: string;

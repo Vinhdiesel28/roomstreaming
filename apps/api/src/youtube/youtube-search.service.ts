@@ -104,23 +104,32 @@ export class YouTubeSearchService {
     return items;
   }
 
-  async similar(input: string): Promise<YouTubeSearchResult[]> {
+  async similar(
+    input: string,
+    contextInput: string[] = [],
+    excludedInput: string[] = [],
+  ): Promise<YouTubeSearchResult[]> {
     const videoId = input.trim();
     if (!VIDEO_ID_PATTERN.test(videoId)) throw new Error("YOUTUBE_VIDEO_NOT_FOUND");
+    const contextVideoIds = validUniqueVideoIds(contextInput, new Set([videoId])).slice(0, 4);
+    const excludedVideoIds = new Set(validUniqueVideoIds(excludedInput).slice(0, 20));
+    const cacheKey = [videoId, ...contextVideoIds].join(":");
 
-    const cached = this.similarCache.get(videoId);
-    if (cached && cached.expiresAt > Date.now()) return cached.items;
+    const cached = this.similarCache.get(cacheKey);
+    if (cached && cached.expiresAt > Date.now()) {
+      return filterRecommendations(cached.items, excludedVideoIds);
+    }
 
-    const pending = this.similarPending.get(videoId);
-    if (pending) return pending;
+    const pending = this.similarPending.get(cacheKey);
+    if (pending) return filterRecommendations(await pending, excludedVideoIds);
 
-    const request = this.loadSimilar(videoId).finally(() => {
-      if (this.similarPending.get(videoId) === request) {
-        this.similarPending.delete(videoId);
+    const request = this.loadSimilar(videoId, contextVideoIds, cacheKey).finally(() => {
+      if (this.similarPending.get(cacheKey) === request) {
+        this.similarPending.delete(cacheKey);
       }
     });
-    this.similarPending.set(videoId, request);
-    return request;
+    this.similarPending.set(cacheKey, request);
+    return filterRecommendations(await request, excludedVideoIds);
   }
 
   async ensurePlayable(input: string): Promise<YouTubeSearchResult> {
@@ -141,28 +150,42 @@ export class YouTubeSearchService {
     return item;
   }
 
-  private async loadSimilar(videoId: string): Promise<YouTubeSearchResult[]> {
+  private async loadSimilar(
+    videoId: string,
+    contextVideoIds: string[],
+    cacheKey: string,
+  ): Promise<YouTubeSearchResult[]> {
     const videoParams = new URLSearchParams({
       part: "snippet,status",
-      id: videoId,
+      id: [videoId, ...contextVideoIds].join(","),
     });
     const videoPayload = await this.request<YouTubeVideoResponse>("videos", videoParams);
-    const source = videoPayload.items?.[0]?.snippet;
+    const sourceItem = videoPayload.items?.find((item) => item.id === videoId)
+      ?? videoPayload.items?.[0];
+    const source = sourceItem?.snippet;
     if (!source?.channelId) throw new Error("YOUTUBE_VIDEO_NOT_FOUND");
 
-    const identity = extractTrackIdentity(source.title ?? "", source.channelTitle ?? "");
+    const identities = [source, ...(videoPayload.items ?? [])
+      .filter((item) => item !== sourceItem && item.id !== videoId)
+      .map((item) => item.snippet)
+      .filter((snippet): snippet is NonNullable<typeof snippet> => Boolean(snippet))]
+      .map((snippet) => extractTrackIdentity(snippet.title ?? "", snippet.channelTitle ?? ""))
+      .filter((identity) => identity.artist && identity.title)
+      .slice(0, 5);
     const channelId = source.channelId;
-    const [sameChannel, similarTracks] = await Promise.all([
+    const [sameChannel, similarGroups] = await Promise.all([
       this.loadSameChannel(channelId, videoId),
-      this.lastFm.similarTracks(identity.artist, identity.title, 10),
+      Promise.all(identities.map((identity) =>
+        this.lastFm.similarTracks(identity.artist, identity.title, 8))),
     ]);
+    const similarTracks = blendSimilarTrackGroups(similarGroups);
     const excluded = new Set([videoId, ...sameChannel.map((item) => item.videoId)]);
     const communityCandidates = similarTracks.length > 0
       ? await this.loadCommunityCandidates(similarTracks, excluded).catch(() => [])
       : [];
     return this.cacheSimilar(
-      videoId,
-      diversifyRecommendations([...communityCandidates, ...sameChannel], videoId),
+      cacheKey,
+      diversifyRecommendations([...communityCandidates, ...sameChannel], videoId, 16),
     );
   }
 
@@ -212,7 +235,7 @@ export class YouTubeSearchService {
     excluded: Set<string>,
   ): Promise<YouTubeSearchResult[]> {
     const query = tracks
-      .slice(0, 6)
+      .slice(0, 8)
       .map((track) => `"${track.artist} ${track.title}"`)
       .join(" | ");
     if (!query) return [];
@@ -241,9 +264,9 @@ export class YouTubeSearchService {
     return rankCommunityCandidates(detailsPayload.items, tracks);
   }
 
-  private cacheSimilar(videoId: string, items: YouTubeSearchResult[]) {
+  private cacheSimilar(cacheKey: string, items: YouTubeSearchResult[]) {
     trimCache(this.similarCache);
-    this.similarCache.set(videoId, {
+    this.similarCache.set(cacheKey, {
       expiresAt: Date.now() + SIMILAR_CACHE_TTL_MS,
       items,
     });
@@ -361,9 +384,10 @@ function rankCommunityCandidates(
         const confidence = titleCoverage * 0.72 + artistCoverage * 0.28;
         const variantPenalty = unwantedVariantPenalty(item.title, track.title);
         const score = titleCoverage * 0.54
-          + artistCoverage * 0.23
-          + track.match * 0.15
-          + popularity * 0.08
+          + artistCoverage * 0.21
+          + track.match * 0.12
+          + popularity * 0.06
+          + presentationQualityScore(item) * 0.07
           - variantPenalty;
         if (score > bestScore) {
           bestScore = score;
@@ -387,13 +411,18 @@ export function extractTrackIdentity(rawTitle: string, rawChannel: string) {
   return { artist, title: withoutArtist || title };
 }
 
-function diversifyRecommendations(items: YouTubeSearchResult[], excludedVideoId: string) {
+function diversifyRecommendations(
+  items: YouTubeSearchResult[],
+  excludedVideoId: string,
+  limit = 8,
+) {
+  const canonical = deduplicateTrackVersions(items);
   const unique: YouTubeSearchResult[] = [];
   const overflow: YouTubeSearchResult[] = [];
   const seen = new Set([excludedVideoId]);
   const channelCounts = new Map<string, number>();
 
-  for (const item of items) {
+  for (const item of canonical) {
     if (seen.has(item.videoId)) continue;
     seen.add(item.videoId);
     const channel = normalizeText(cleanChannelTitle(item.channelTitle));
@@ -404,14 +433,56 @@ function diversifyRecommendations(items: YouTubeSearchResult[], excludedVideoId:
     }
     channelCounts.set(channel, count + 1);
     unique.push(item);
-    if (unique.length === 8) return unique;
+    if (unique.length === limit) return unique;
   }
 
   for (const item of overflow) {
     unique.push(item);
-    if (unique.length === 8) break;
+    if (unique.length === limit) break;
   }
   return unique;
+}
+
+function deduplicateTrackVersions(items: YouTubeSearchResult[]) {
+  const bestByTrack = new Map<
+    string,
+    { item: YouTubeSearchResult; firstIndex: number; quality: number }
+  >();
+  items.forEach((item, index) => {
+    const key = canonicalTrackKey(item);
+    const quality = presentationQualityScore(item);
+    const existing = bestByTrack.get(key);
+    if (!existing) {
+      bestByTrack.set(key, { item, firstIndex: index, quality });
+    } else if (quality > existing.quality) {
+      bestByTrack.set(key, { item, firstIndex: existing.firstIndex, quality });
+    }
+  });
+  return [...bestByTrack.values()]
+    .sort((left, right) => left.firstIndex - right.firstIndex)
+    .map(({ item }) => item);
+}
+
+function canonicalTrackKey(item: YouTubeSearchResult) {
+  const identity = extractTrackIdentity(item.title, item.channelTitle);
+  const artist = normalizeText(identity.artist);
+  const title = normalizeText(identity.title)
+    .replace(/\b(?:remaster(?:ed)?|version|edit|extended)\b/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  return artist && title ? `${artist}\u0000${title}` : item.videoId;
+}
+
+function presentationQualityScore(item: YouTubeSearchResult) {
+  const title = normalizeText(item.title);
+  const channel = item.channelTitle;
+  let score = 0;
+  if (/\bofficial\b/i.test(item.title)) score += 0.45;
+  if (/VEVO$/i.test(channel) || /\s+-\s+Topic$/i.test(channel)) score += 0.45;
+  if (/\b(?:lyrics?|live|cover|karaoke|reaction|nightcore|sped up|slowed)\b/i.test(title)) {
+    score -= 0.55;
+  }
+  return Math.max(-1, Math.min(1, score));
 }
 
 const MUSIC_NOISE = new Set([
@@ -421,7 +492,7 @@ const MUSIC_NOISE = new Set([
 
 function cleanMusicText(value: string) {
   return value
-    .replace(/[\[(](?:official|music video|official video|official audio|lyrics?|mv|hd|4k|visualizer)[^\])]*[\])]/gi, " ")
+    .replace(/[\[(][^\])]*(?:official|music video|audio|lyrics?|mv|hd|4k|visualizer|live|cover|karaoke|remaster)[^\])]*[\])]/gi, " ")
     .replace(/\s+/g, " ")
     .trim();
 }
@@ -463,10 +534,43 @@ function coverage(expected: Set<string>, actual: Set<string>) {
 function unwantedVariantPenalty(candidate: string, target: string) {
   const targetText = normalizeText(target);
   const candidateText = normalizeText(candidate);
-  const variants = ["karaoke", "reaction", "cover", "nightcore", "sped up", "slowed"];
-  return variants.some((variant) => candidateText.includes(variant) && !targetText.includes(variant))
-    ? 0.22
+  const strongVariants = ["karaoke", "reaction", "cover"];
+  if (strongVariants.some((variant) => candidateText.includes(variant) && !targetText.includes(variant))) {
+    return 0.34;
+  }
+  const softVariants = ["live", "lyrics", "lyric", "nightcore", "sped up", "slowed"];
+  return softVariants.some((variant) => candidateText.includes(variant) && !targetText.includes(variant))
+    ? 0.24
     : 0;
+}
+
+function validUniqueVideoIds(values: string[], initial = new Set<string>()) {
+  const seen = new Set(initial);
+  return values.flatMap((value) => {
+    const videoId = value.trim();
+    if (!VIDEO_ID_PATTERN.test(videoId) || seen.has(videoId)) return [];
+    seen.add(videoId);
+    return [videoId];
+  });
+}
+
+function filterRecommendations(items: YouTubeSearchResult[], excluded: Set<string>) {
+  return items.filter((item) => !excluded.has(item.videoId)).slice(0, 8);
+}
+
+function blendSimilarTrackGroups(groups: SimilarTrack[][]) {
+  const merged = new Map<string, SimilarTrack>();
+  groups.forEach((tracks, groupIndex) => {
+    const weight = [1, 0.76, 0.6, 0.48, 0.4][groupIndex] ?? 0.35;
+    const take = groupIndex === 0 ? 4 : 2;
+    for (const track of tracks.slice(0, take)) {
+      const key = `${normalizeText(track.artist)}\u0000${normalizeText(track.title)}`;
+      const weighted = { ...track, match: track.match * weight };
+      const existing = merged.get(key);
+      if (!existing || weighted.match > existing.match) merged.set(key, weighted);
+    }
+  });
+  return [...merged.values()].sort((left, right) => right.match - left.match).slice(0, 10);
 }
 
 function parseDurationSeconds(value?: string) {

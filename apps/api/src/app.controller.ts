@@ -81,11 +81,18 @@ export class AppController {
   }
 
   @Get("api/youtube/similar")
-  async similarYouTube(@Query("videoId") input: unknown, @Ip() ip: string) {
+  async similarYouTube(
+    @Query("videoId") input: unknown,
+    @Query("context") contextInput: unknown,
+    @Query("exclude") excludeInput: unknown,
+    @Ip() ip: string,
+  ) {
     const videoId = typeof input === "string" ? input.trim() : "";
     if (!/^[A-Za-z0-9_-]{11}$/.test(videoId)) {
       throw new BadRequestException("Video YouTube không hợp lệ.");
     }
+    const contextVideoIds = parseVideoIdList(contextInput, 4).filter((id) => id !== videoId);
+    const excludedVideoIds = parseVideoIdList(excludeInput, 20);
     if (!this.limiter.allow(`youtube-similar:${ip}`, 5, 60_000)) {
       throw new HttpException(
         "Bạn đang lấy gợi ý quá nhanh. Chờ một phút rồi thử lại.",
@@ -94,7 +101,9 @@ export class AppController {
     }
 
     try {
-      return { items: await this.youtubeSearch.similar(videoId) };
+      return {
+        items: await this.youtubeSearch.similar(videoId, contextVideoIds, excludedVideoIds),
+      };
     } catch (error) {
       const code = error instanceof Error ? error.message : "YOUTUBE_SEARCH_UNAVAILABLE";
       if (code === "YOUTUBE_API_KEY_MISSING") {
@@ -116,4 +125,15 @@ export class AppController {
       );
     }
   }
+}
+
+function parseVideoIdList(input: unknown, limit: number) {
+  if (typeof input !== "string") return [];
+  const seen = new Set<string>();
+  return input.split(",").flatMap((value) => {
+    const videoId = value.trim();
+    if (!/^[A-Za-z0-9_-]{11}$/.test(videoId) || seen.has(videoId) || seen.size >= limit) return [];
+    seen.add(videoId);
+    return [videoId];
+  });
 }

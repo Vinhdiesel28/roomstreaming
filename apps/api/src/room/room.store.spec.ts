@@ -82,6 +82,13 @@ describe("RoomStore", () => {
     store.command(room, "host", "NEXT");
     expect(room.currentVideo?.videoId).toBe("9bZkp7q19f0");
     expect(room.queue).toHaveLength(0);
+    expect(room.recentVideoIds).toEqual(["dQw4w9WgXcQ"]);
+    expect(room.skippedVideoIds).toEqual([]);
+
+    store.command(room, "host", "NEXT", -1);
+    expect(room.currentVideo).toBeNull();
+    expect(room.recentVideoIds).toEqual(["9bZkp7q19f0", "dQw4w9WgXcQ"]);
+    expect(room.skippedVideoIds).toEqual(["9bZkp7q19f0"]);
   });
 
   it("lets the host play any queued video immediately", () => {
@@ -98,6 +105,7 @@ describe("RoomStore", () => {
     expect(room.currentVideo?.videoId).toBe("bbbbbbbbbbb");
     expect(room.currentVideo?.state).toBe("playing");
     expect(room.queue.map((queued) => queued.videoId)).toEqual(["aaaaaaaaaaa"]);
+    expect(room.recentVideoIds).toEqual(["dQw4w9WgXcQ"]);
   });
 });
 

@@ -179,11 +179,24 @@ describe("YouTubeSearchService", () => {
     const fetchMock = vi.fn()
       .mockResolvedValueOnce({
         ok: true,
-        json: async () => ({ items: [{ snippet: {
-          title: "Ca sĩ gốc - Bài gốc (Official MV)",
-          channelTitle: "Ca sĩ gốc",
-          channelId: "channel-1",
-        } }] }),
+        json: async () => ({ items: [
+          {
+            id: "dQw4w9WgXcQ",
+            snippet: {
+              title: "Ca sĩ gốc - Bài gốc (Official MV)",
+              channelTitle: "Ca sĩ gốc",
+              channelId: "channel-1",
+            },
+          },
+          {
+            id: "9bZkp7q19f0",
+            snippet: {
+              title: "Ca sĩ trước - Bài vừa nghe",
+              channelTitle: "Ca sĩ trước",
+              channelId: "channel-2",
+            },
+          },
+        ] }),
       })
       .mockResolvedValueOnce({
         ok: true,
@@ -211,35 +224,64 @@ describe("YouTubeSearchService", () => {
       })
       .mockResolvedValueOnce({
         ok: true,
-        json: async () => ({ items: [{
-          id: { videoId: "aaaaaaaaaaa" },
-          snippet: {
-            title: "Nghệ sĩ khác - Bài khác",
-            channelTitle: "Nghệ sĩ khác",
-            thumbnails: { medium: { url: "https://i.ytimg.com/search.jpg" } },
+        json: async () => ({ items: [
+          {
+            id: { videoId: "aaaaaaaaaaa" },
+            snippet: {
+              title: "Nghệ sĩ khác - Bài khác",
+              channelTitle: "Nghệ sĩ khác",
+              thumbnails: { medium: { url: "https://i.ytimg.com/search.jpg" } },
+            },
           },
-        }] }),
+          {
+            id: { videoId: "bbbbbbbbbbb" },
+            snippet: {
+              title: "Nghệ sĩ khác - Bài khác (Lyrics)",
+              channelTitle: "Kênh lyrics",
+              thumbnails: { medium: { url: "https://i.ytimg.com/lyrics.jpg" } },
+            },
+          },
+        ] }),
       })
       .mockResolvedValueOnce({
         ok: true,
-        json: async () => ({ items: [{
-          id: "aaaaaaaaaaa",
-          snippet: {
-            title: "Nghệ sĩ khác - Bài khác (Official MV)",
-            channelTitle: "Nghệ sĩ khác",
-            thumbnails: { medium: { url: "https://i.ytimg.com/recommended.jpg" } },
+        json: async () => ({ items: [
+          {
+            id: "bbbbbbbbbbb",
+            snippet: {
+              title: "Nghệ sĩ khác - Bài khác (Lyrics)",
+              channelTitle: "Kênh lyrics",
+              thumbnails: { medium: { url: "https://i.ytimg.com/lyrics.jpg" } },
+            },
+            status: { embeddable: true, privacyStatus: "public" },
+            contentDetails: { duration: "PT4M10S" },
+            statistics: { viewCount: "50000000" },
           },
-          status: { embeddable: true, privacyStatus: "public" },
-          contentDetails: { duration: "PT4M12S" },
-          statistics: { viewCount: "12000000" },
-        }] }),
+          {
+            id: "aaaaaaaaaaa",
+            snippet: {
+              title: "Nghệ sĩ khác - Bài khác (Official MV)",
+              channelTitle: "Nghệ sĩ khácVEVO",
+              thumbnails: { medium: { url: "https://i.ytimg.com/recommended.jpg" } },
+            },
+            status: { embeddable: true, privacyStatus: "public" },
+            contentDetails: { duration: "PT4M12S" },
+            statistics: { viewCount: "12000000" },
+          },
+        ] }),
       });
     vi.stubGlobal("fetch", fetchMock);
 
-    const items = await new YouTubeSearchService(lastFm).similar("dQw4w9WgXcQ");
+    const items = await new YouTubeSearchService(lastFm).similar(
+      "dQw4w9WgXcQ",
+      ["9bZkp7q19f0"],
+      ["bbbbbbbbbbb"],
+    );
 
-    expect(lastFm.similarTracks).toHaveBeenCalledWith("Ca sĩ gốc", "Bài gốc", 10);
+    expect(lastFm.similarTracks).toHaveBeenCalledWith("Ca sĩ gốc", "Bài gốc", 8);
+    expect(lastFm.similarTracks).toHaveBeenCalledWith("Ca sĩ trước", "Bài vừa nghe", 8);
     expect(items.map((item) => item.videoId)).toEqual(["aaaaaaaaaaa", "ccccccccccc"]);
+    expect(String(fetchMock.mock.calls[0]?.[0])).toContain("dQw4w9WgXcQ%2C9bZkp7q19f0");
     expect(String(fetchMock.mock.calls[4]?.[0])).toContain("videoCategoryId=10");
     expect(String(fetchMock.mock.calls[5]?.[0])).toContain("contentDetails%2Cstatistics");
   });

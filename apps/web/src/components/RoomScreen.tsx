@@ -157,6 +157,18 @@ export function RoomScreen({
   const chatInputRef = useRef<HTMLInputElement>(null);
   const wakeLockStatus = useScreenWakeLock(snapshot.currentVideo?.state === "playing");
   const unreadMessageCount = Math.max(0, messages.length - lastReadMessageCount);
+  const recommendationContextVideoIds = [...new Set([
+    ...(snapshot.recentVideoIds ?? []),
+    ...snapshot.queue.slice(-2).map((item) => item.videoId),
+  ])]
+    .filter((videoId) => videoId !== snapshot.currentVideo?.videoId)
+    .slice(0, 4);
+  const recommendationExcludedVideoIds = [...new Set([
+    ...(snapshot.skippedVideoIds ?? []),
+    ...snapshot.queue.map((item) => item.videoId),
+  ])].slice(0, 20);
+  const recommendationContextKey = recommendationContextVideoIds.join(",");
+  const recommendationExcludedKey = recommendationExcludedVideoIds.join(",");
 
   const saveProfile = async (nextProfile: BrowserProfile) => {
     const saved = saveBrowserProfile(nextProfile);
@@ -216,7 +228,11 @@ export function RoomScreen({
     const loadSimilarVideos = async () => {
       try {
         const [items] = await Promise.all([
-          getSimilarYouTubeVideos(videoId),
+          getSimilarYouTubeVideos(
+            videoId,
+            recommendationContextVideoIds,
+            recommendationExcludedVideoIds,
+          ),
           new Promise((resolve) => window.setTimeout(resolve, 300)),
         ]);
         if (cancelled) return;
@@ -236,7 +252,7 @@ export function RoomScreen({
     return () => {
       cancelled = true;
     };
-  }, [snapshot.currentVideo?.videoId]);
+  }, [snapshot.currentVideo?.videoId, recommendationContextKey, recommendationExcludedKey]);
 
   const addVideo = async (event: FormEvent) => {
     event.preventDefault();
@@ -353,7 +369,8 @@ export function RoomScreen({
     setSkipBusy(true);
     setQueueError(null);
     try {
-      await onCommand("NEXT", 0);
+      // A negative position distinguishes a manual skip from natural video completion.
+      await onCommand("NEXT", -1);
     } catch (cause) {
       setQueueError(cause instanceof Error ? cause.message : "Không bỏ qua được video.");
     } finally {
