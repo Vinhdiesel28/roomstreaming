@@ -134,7 +134,7 @@ describe("RoomScreen layout", () => {
       />,
     );
 
-    expect(html).toContain("Video mới cùng kênh");
+    expect(html).toContain("Hợp gu phòng");
     expect(html).toContain('id="similar-title"');
   });
 

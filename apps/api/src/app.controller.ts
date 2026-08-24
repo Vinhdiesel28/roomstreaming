@@ -33,7 +33,12 @@ export class AppController {
     return {
       ok: true,
       rooms: this.rooms.size,
-      features: { profiles: true, roomRecovery: true, youtubeSimilar: true },
+      features: {
+        profiles: true,
+        roomRecovery: true,
+        youtubeSimilar: true,
+        musicRecommendations: Boolean(process.env.LASTFM_API_KEY?.trim()),
+      },
       revision: process.env.RENDER_GIT_COMMIT?.slice(0, 7) ?? "local",
       now: Date.now(),
     };

@@ -222,7 +222,7 @@ export function RoomScreen({
         if (cancelled) return;
         setSimilarResults(items);
         if (items.length === 0) {
-          setSimilarError("Kênh này chưa có video mới nào có thể phát trong phòng.");
+          setSimilarError("Chưa tìm được bài phù hợp có thể phát trong phòng.");
         }
       } catch (cause) {
         if (cancelled) return;
@@ -660,13 +660,13 @@ export function RoomScreen({
         <section className="similar-panel" aria-labelledby="similar-title" aria-busy={similarBusy}>
           <div className="panel-heading panel-heading--compact">
             <div>
-              <h2 id="similar-title">Video mới cùng kênh</h2>
-              <p><ListVideo size={15} /> Các video mới đăng từ tác giả này</p>
+              <h2 id="similar-title">Hợp gu phòng</h2>
+              <p><ListVideo size={15} /> Nhạc tương tự, cùng tác giả và một chút đổi gió</p>
             </div>
             <span className="count-badge">{visibleSimilarResults.length}</span>
           </div>
           {!snapshot.currentVideo && (
-            <p className="similar-status">Phát một video để xem các video mới từ cùng kênh.</p>
+            <p className="similar-status">Phát một video để bắt đầu tạo gu nhạc cho phòng.</p>
           )}
           {snapshot.currentVideo && similarBusy && (
             <p className="similar-status" role="status">

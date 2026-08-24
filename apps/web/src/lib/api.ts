@@ -9,6 +9,7 @@ export interface ServerHealth {
     profiles?: boolean;
     roomRecovery?: boolean;
     youtubeSimilar?: boolean;
+    musicRecommendations?: boolean;
   };
   revision?: string;
 }

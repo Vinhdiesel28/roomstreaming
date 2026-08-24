@@ -6,6 +6,7 @@ import { RoomStore } from "./room/room.store";
 import { RateLimiter } from "./room/rate-limiter";
 import { YouTubeSearchService } from "./youtube/youtube-search.service";
 import { VoiceRegistry } from "./voice/voice.registry";
+import { LastFmRecommendationService } from "./recommendation/lastfm-recommendation.service";
 
 @Module({
   controllers: [AppController],
@@ -15,6 +16,7 @@ import { VoiceRegistry } from "./voice/voice.registry";
     RoomStore,
     RateLimiter,
     YouTubeSearchService,
+    LastFmRecommendationService,
     VoiceRegistry,
   ],
 })

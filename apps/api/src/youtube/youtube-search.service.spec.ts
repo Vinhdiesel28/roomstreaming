@@ -1,13 +1,28 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
-import { YouTubeSearchService } from "./youtube-search.service";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import type { LastFmRecommendationService } from "../recommendation/lastfm-recommendation.service";
+import { extractTrackIdentity, YouTubeSearchService } from "./youtube-search.service";
 
 describe("YouTubeSearchService", () => {
   const originalKey = process.env.YOUTUBE_API_KEY;
+  const originalLastFmKey = process.env.LASTFM_API_KEY;
+
+  beforeEach(() => {
+    delete process.env.LASTFM_API_KEY;
+  });
 
   afterEach(() => {
     vi.unstubAllGlobals();
     if (originalKey === undefined) delete process.env.YOUTUBE_API_KEY;
     else process.env.YOUTUBE_API_KEY = originalKey;
+    if (originalLastFmKey === undefined) delete process.env.LASTFM_API_KEY;
+    else process.env.LASTFM_API_KEY = originalLastFmKey;
+  });
+
+  it("extracts artist and track names from common YouTube music titles", () => {
+    expect(extractTrackIdentity("Da LAB - Gác Lại Âu Lo (Official MV)", "Da LAB Official"))
+      .toEqual({ artist: "Da LAB", title: "Gác Lại Âu Lo" });
+    expect(extractTrackIdentity("Chúng Ta Của Tương Lai [Official Audio]", "Sơn Tùng M-TP - Topic"))
+      .toEqual({ artist: "Sơn Tùng M-TP", title: "Chúng Ta Của Tương Lai" });
   });
 
   it("requires a server-side API key", async () => {
@@ -152,6 +167,81 @@ describe("YouTubeSearchService", () => {
     expect(String(fetchMock.mock.calls[2]?.[0])).toContain("/playlistItems?");
     expect(String(fetchMock.mock.calls[2]?.[0])).toContain("playlistId=uploads-1");
     expect(String(fetchMock.mock.calls[3]?.[0])).toContain("part=snippet%2Cstatus");
+  });
+
+  it("maps Last.fm tracks to playable YouTube videos and mixes a different artist first", async () => {
+    process.env.YOUTUBE_API_KEY = "test-key";
+    const lastFm = {
+      similarTracks: vi.fn(async () => [
+        { artist: "Nghệ sĩ khác", title: "Bài khác", match: 0.91 },
+      ]),
+    } as unknown as LastFmRecommendationService;
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ items: [{ snippet: {
+          title: "Ca sĩ gốc - Bài gốc (Official MV)",
+          channelTitle: "Ca sĩ gốc",
+          channelId: "channel-1",
+        } }] }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ items: [{
+          contentDetails: { relatedPlaylists: { uploads: "uploads-1" } },
+        }] }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ items: [
+          { contentDetails: { videoId: "ccccccccccc" } },
+        ] }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ items: [{
+          id: "ccccccccccc",
+          snippet: {
+            title: "Bài mới cùng kênh",
+            channelTitle: "Ca sĩ gốc",
+            thumbnails: { medium: { url: "https://i.ytimg.com/same.jpg" } },
+          },
+          status: { embeddable: true, privacyStatus: "public" },
+        }] }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ items: [{
+          id: { videoId: "aaaaaaaaaaa" },
+          snippet: {
+            title: "Nghệ sĩ khác - Bài khác",
+            channelTitle: "Nghệ sĩ khác",
+            thumbnails: { medium: { url: "https://i.ytimg.com/search.jpg" } },
+          },
+        }] }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ items: [{
+          id: "aaaaaaaaaaa",
+          snippet: {
+            title: "Nghệ sĩ khác - Bài khác (Official MV)",
+            channelTitle: "Nghệ sĩ khác",
+            thumbnails: { medium: { url: "https://i.ytimg.com/recommended.jpg" } },
+          },
+          status: { embeddable: true, privacyStatus: "public" },
+          contentDetails: { duration: "PT4M12S" },
+          statistics: { viewCount: "12000000" },
+        }] }),
+      });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const items = await new YouTubeSearchService(lastFm).similar("dQw4w9WgXcQ");
+
+    expect(lastFm.similarTracks).toHaveBeenCalledWith("Ca sĩ gốc", "Bài gốc", 10);
+    expect(items.map((item) => item.videoId)).toEqual(["aaaaaaaaaaa", "ccccccccccc"]);
+    expect(String(fetchMock.mock.calls[4]?.[0])).toContain("videoCategoryId=10");
+    expect(String(fetchMock.mock.calls[5]?.[0])).toContain("contentDetails%2Cstatistics");
   });
 
   it("validates pasted videos before they enter the queue and caches valid IDs", async () => {

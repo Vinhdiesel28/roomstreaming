@@ -42,6 +42,7 @@ Khi chạy PowerShell, cũng có thể đặt biến tạm cho tiến trình:
 $env:SESSION_SECRET="mot-chuoi-ngau-nhien-it-nhat-32-ky-tu"
 $env:ALLOWED_ORIGINS="http://localhost:5173"
 $env:YOUTUBE_API_KEY="api-key-tu-google-cloud"
+$env:LASTFM_API_KEY="api-key-tu-lastfm"
 npm run dev
 ```
 
@@ -54,6 +55,14 @@ npm run dev
 5. Đặt key vào biến môi trường `YOUTUBE_API_KEY` của backend rồi khởi động lại.
 
 Nếu chưa đặt key hoặc hết quota tìm kiếm trong ngày, chức năng dán link và phát video vẫn hoạt động bình thường. Backend cache cùng một từ khóa trong 5 phút và giới hạn 10 lượt/phút/IP để tiết kiệm quota.
+
+### Bật đề xuất nhạc khác nghệ sĩ
+
+1. Tạo API account tại [Last.fm](https://www.last.fm/api/account/create).
+2. Đặt API key nhận được vào `LASTFM_API_KEY` của backend.
+3. Khởi động lại backend; `/health` sẽ trả `"musicRecommendations": true`.
+
+Khi có key, backend tách ca sĩ và tên bài từ video đang phát, lấy các bài tương tự từ Last.fm, ánh xạ chúng sang video YouTube có thể nhúng rồi xếp hạng theo độ khớp, thời lượng và độ phổ biến. Kết quả được trộn với video mới cùng kênh, giới hạn lặp tác giả và cache 6 giờ. Nếu Last.fm lỗi hoặc chưa có key, danh sách cùng kênh vẫn hoạt động như trước. Không có tên người dùng, chat hay lịch sử phòng nào được gửi tới Last.fm.
 
 ### Voice chat local
 
@@ -97,8 +106,9 @@ npm run test:voice
 4. Điền `VITE_API_URL` bằng URL API có `https://`, ví dụ `https://roomstreaming-api.onrender.com`.
 5. Điền `ALLOWED_ORIGINS` bằng URL frontend chính xác, ví dụ `https://roomstreaming-web.onrender.com`.
 6. Điền `YOUTUBE_API_KEY` bằng key đã tạo ở Google Cloud.
-7. Có thể để trống ba biến `VITE_TURN_*`; chỉ điền nếu đã có dịch vụ TURN.
-8. Render tự sinh `SESSION_SECRET`. Sau khi biết URL chính xác, redeploy cả hai service nếu đã đổi biến môi trường.
+7. Điền `LASTFM_API_KEY` bằng API key từ Last.fm để bật gợi ý nhạc khác nghệ sĩ. Nếu để trống, web vẫn dùng video mới cùng kênh.
+8. Có thể để trống ba biến `VITE_TURN_*`; chỉ điền nếu đã có dịch vụ TURN.
+9. Render tự sinh `SESSION_SECRET`. Sau khi biết URL chính xác, redeploy cả hai service nếu đã đổi biến môi trường.
 
 Static Site có HTTPS sẵn. Web Service miễn phí có thể ngủ khi không hoạt động và cần một lúc để thức lại. Trong lúc đó web hiện màn hình chờ và tự kết nối lại. Nếu RAM backend bị xóa, tab quay lại đầu tiên dùng bản tạm trong `sessionStorage` để khôi phục mã phòng, video đang phát và hàng chờ. Nếu chỉ còn link mời mà không còn bản tạm, link vẫn tạo lại một phòng trống với cùng mã; người vào đầu tiên trở thành Host. Chat và voice không được khôi phục.
 

@@ -38,3 +38,5 @@ services:
         value: 60
       - key: YOUTUBE_API_KEY
         sync: false
+      - key: LASTFM_API_KEY
+        sync: false
