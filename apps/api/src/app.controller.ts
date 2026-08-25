@@ -16,6 +16,7 @@ import { RateLimiter } from "./room/rate-limiter";
 import { YouTubeSearchService } from "./youtube/youtube-search.service";
 
 const MAX_RECOMMENDATION_EXCLUSIONS = 100;
+const MAX_SEEN_RECOMMENDATIONS = 60;
 
 @Controller()
 export class AppController {
@@ -87,6 +88,7 @@ export class AppController {
     @Query("videoId") input: unknown,
     @Query("context") contextInput: unknown,
     @Query("exclude") excludeInput: unknown,
+    @Query("seen") seenInput: unknown,
     @Ip() ip: string,
   ) {
     const videoId = typeof input === "string" ? input.trim() : "";
@@ -95,6 +97,7 @@ export class AppController {
     }
     const contextVideoIds = parseVideoIdList(contextInput, 4).filter((id) => id !== videoId);
     const excludedVideoIds = parseVideoIdList(excludeInput, MAX_RECOMMENDATION_EXCLUSIONS);
+    const seenVideoIds = parseVideoIdList(seenInput, MAX_SEEN_RECOMMENDATIONS);
     if (!this.limiter.allow(`youtube-similar:${ip}`, 5, 60_000)) {
       throw new HttpException(
         "Bạn đang lấy gợi ý quá nhanh. Chờ một phút rồi thử lại.",
@@ -104,7 +107,12 @@ export class AppController {
 
     try {
       return {
-        items: await this.youtubeSearch.similar(videoId, contextVideoIds, excludedVideoIds),
+        items: await this.youtubeSearch.similar(
+          videoId,
+          contextVideoIds,
+          excludedVideoIds,
+          seenVideoIds,
+        ),
       };
     } catch (error) {
       const code = error instanceof Error ? error.message : "YOUTUBE_SEARCH_UNAVAILABLE";

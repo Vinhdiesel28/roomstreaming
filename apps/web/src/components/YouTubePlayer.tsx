@@ -7,14 +7,16 @@ interface Props {
   playback: Playback | null;
   isHost: boolean;
   onCommand: (action: PlaybackCommand, positionSec?: number) => Promise<unknown>;
+  onEnded?: () => Promise<unknown> | unknown;
 }
 
-export function YouTubePlayer({ playback, isHost, onCommand }: Props) {
+export function YouTubePlayer({ playback, isHost, onCommand, onEnded }: Props) {
   const mountRef = useRef<HTMLDivElement>(null);
   const playerRef = useRef<YT.Player | null>(null);
   const playerReadyRef = useRef(false);
   const playbackRef = useRef(playback);
   const isHostRef = useRef(isHost);
+  const onEndedRef = useRef(onEnded);
   const applyingRef = useRef(false);
   const applyingTimerRef = useRef<number | null>(null);
   const lastVersionRef = useRef(-1);
@@ -24,6 +26,7 @@ export function YouTubePlayer({ playback, isHost, onCommand }: Props) {
 
   playbackRef.current = playback;
   isHostRef.current = isHost;
+  onEndedRef.current = onEnded;
 
   const markApplying = useCallback(() => {
     applyingRef.current = true;
@@ -106,7 +109,10 @@ export function YouTubePlayer({ playback, isHost, onCommand }: Props) {
             if (event.data === YT.PlayerState.PAUSED && (current?.state !== "paused" || drift > 2)) {
               void onCommand("PAUSE", position);
             }
-            if (event.data === YT.PlayerState.ENDED) void onCommand("NEXT", 0);
+            if (event.data === YT.PlayerState.ENDED) {
+              if (onEndedRef.current) void onEndedRef.current();
+              else void onCommand("NEXT", 0);
+            }
           },
           onError: () => setError("Video này không thể phát nhúng. Hãy thử video khác."),
           onAutoplayBlocked: () => setBlocked(true),

@@ -3,6 +3,7 @@ import type { YouTubeSearchResult } from "../types";
 const API_URL = (import.meta.env.VITE_API_URL ?? "http://localhost:3001").replace(/\/$/, "");
 const TOKEN_KEY = "watchroom.session.token";
 const MAX_RECOMMENDATION_EXCLUSIONS = 100;
+const MAX_SEEN_RECOMMENDATIONS = 60;
 
 export interface ServerHealth {
   ok: boolean;
@@ -55,11 +56,15 @@ export async function getSimilarYouTubeVideos(
   videoId: string,
   contextVideoIds: string[] = [],
   excludedVideoIds: string[] = [],
+  seenVideoIds: string[] = [],
 ): Promise<YouTubeSearchResult[]> {
   const params = new URLSearchParams({ videoId });
   if (contextVideoIds.length > 0) params.set("context", contextVideoIds.slice(0, 4).join(","));
   if (excludedVideoIds.length > 0) {
     params.set("exclude", excludedVideoIds.slice(0, MAX_RECOMMENDATION_EXCLUSIONS).join(","));
+  }
+  if (seenVideoIds.length > 0) {
+    params.set("seen", seenVideoIds.slice(-MAX_SEEN_RECOMMENDATIONS).join(","));
   }
   const response = await fetch(`${API_URL}/api/youtube/similar?${params}`);
   const payload = (await response.json().catch(() => ({}))) as {

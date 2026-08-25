@@ -1,6 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { LastFmRecommendationService } from "../recommendation/lastfm-recommendation.service";
-import { extractTrackIdentity, YouTubeSearchService } from "./youtube-search.service";
+import {
+  diversifyRecommendations,
+  extractTrackIdentity,
+  YouTubeSearchService,
+} from "./youtube-search.service";
 
 describe("YouTubeSearchService", () => {
   const originalKey = process.env.YOUTUBE_API_KEY;
@@ -23,6 +27,36 @@ describe("YouTubeSearchService", () => {
       .toEqual({ artist: "Da LAB", title: "Gác Lại Âu Lo" });
     expect(extractTrackIdentity("Chúng Ta Của Tương Lai [Official Audio]", "Sơn Tùng M-TP - Topic"))
       .toEqual({ artist: "Sơn Tùng M-TP", title: "Chúng Ta Của Tương Lai" });
+  });
+
+  it("interleaves artists and caps repeated artists in one recommendation batch", () => {
+    const items = [
+      result("aaaaaaaaaaa", "Ca sĩ A - Bài 1", "Ca sĩ A Official"),
+      result("bbbbbbbbbbb", "Ca sĩ A - Bài 2", "Kênh đăng lại 1"),
+      result("ccccccccccc", "Ca sĩ A - Bài 3", "Kênh đăng lại 2"),
+      result("ddddddddddd", "Ca sĩ A - Bài 4", "Kênh đăng lại 3"),
+      result("eeeeeeeeeee", "Ca sĩ B - Bài 1", "Ca sĩ B"),
+      result("fffffffffff", "Ca sĩ B - Bài 2", "Ca sĩ B"),
+      result("ggggggggggg", "Ca sĩ C - Bài 1", "Ca sĩ C"),
+      result("hhhhhhhhhhh", "Ca sĩ D - Bài 1", "Ca sĩ D"),
+      result("iiiiiiiiiii", "Ca sĩ D - Bài 2", "Ca sĩ D"),
+    ];
+
+    const diversified = diversifyRecommendations(items, "source00000", 8, "Ca sĩ A");
+    const artists = diversified.map((item) => extractTrackIdentity(item.title, item.channelTitle).artist);
+
+    expect(artists.slice(0, 4)).toEqual(["Ca sĩ B", "Ca sĩ C", "Ca sĩ D", "Ca sĩ A"]);
+    expect(artists.filter((artist) => artist === "Ca sĩ A")).toHaveLength(3);
+  });
+
+  it("fills the batch from the remaining pool when only one artist is available", () => {
+    const items = Array.from({ length: 8 }, (_, index) => result(
+      `${index}`.padStart(11, "z"),
+      `Ca sĩ A - Bài ${index + 1}`,
+      "Ca sĩ A Official",
+    ));
+
+    expect(diversifyRecommendations(items, "source00000", 8, "Ca sĩ A")).toHaveLength(8);
   });
 
   it("requires a server-side API key", async () => {
@@ -94,6 +128,7 @@ describe("YouTubeSearchService", () => {
         json: async () => ({
           items: [
             { contentDetails: { videoId: "dQw4w9WgXcQ" } },
+            { contentDetails: { videoId: "ddddddddddd" } },
             { contentDetails: { videoId: "aaaaaaaaaaa" } },
             { contentDetails: { videoId: "bbbbbbbbbbb" } },
             { contentDetails: { videoId: "ccccccccccc" } },
@@ -106,6 +141,16 @@ describe("YouTubeSearchService", () => {
         json: async () => ({
           items: [
             {
+              id: "ddddddddddd",
+              snippet: {
+                title: "Video Shorts rất ngắn",
+                channelTitle: "Ca sĩ",
+                thumbnails: { medium: { url: "https://i.ytimg.com/short.jpg" } },
+              },
+              status: { embeddable: true, privacyStatus: "public" },
+              contentDetails: { duration: "PT45S" },
+            },
+            {
               id: "ccccccccccc",
               snippet: {
                 title: "Video mới thứ ba",
@@ -113,6 +158,7 @@ describe("YouTubeSearchService", () => {
                 thumbnails: { medium: { url: "https://i.ytimg.com/third.jpg" } },
               },
               status: { embeddable: true, privacyStatus: "public" },
+              contentDetails: { duration: "PT3M5S" },
             },
             {
               id: "aaaaaaaaaaa",
@@ -122,6 +168,7 @@ describe("YouTubeSearchService", () => {
                 thumbnails: { medium: { url: "https://i.ytimg.com/latest.jpg" } },
               },
               status: { embeddable: true, privacyStatus: "public" },
+              contentDetails: { duration: "PT3M30S" },
             },
             {
               id: "bbbbbbbbbbb",
@@ -143,6 +190,13 @@ describe("YouTubeSearchService", () => {
       service.similar("dQw4w9WgXcQ"),
     ]);
     const cached = await service.similar("dQw4w9WgXcQ");
+    const unseen = await service.similar("dQw4w9WgXcQ", [], [], ["aaaaaaaaaaa"]);
+    const exhausted = await service.similar(
+      "dQw4w9WgXcQ",
+      [],
+      [],
+      ["aaaaaaaaaaa", "ccccccccccc"],
+    );
 
     expect(first).toEqual([
       {
@@ -160,13 +214,17 @@ describe("YouTubeSearchService", () => {
     ]);
     expect(simultaneous).toEqual(first);
     expect(cached).toEqual(first);
+    expect(unseen.map((item) => item.videoId)).toEqual(["ccccccccccc"]);
+    expect(exhausted).toEqual(first);
     expect(fetchMock).toHaveBeenCalledTimes(4);
     expect(String(fetchMock.mock.calls[0]?.[0])).toContain("/videos?");
     expect(String(fetchMock.mock.calls[1]?.[0])).toContain("/channels?");
     expect(String(fetchMock.mock.calls[1]?.[0])).toContain("part=contentDetails");
     expect(String(fetchMock.mock.calls[2]?.[0])).toContain("/playlistItems?");
     expect(String(fetchMock.mock.calls[2]?.[0])).toContain("playlistId=uploads-1");
-    expect(String(fetchMock.mock.calls[3]?.[0])).toContain("part=snippet%2Cstatus");
+    expect(String(fetchMock.mock.calls[3]?.[0])).toContain(
+      "part=snippet%2Cstatus%2CcontentDetails",
+    );
   });
 
   it("maps Last.fm tracks to playable YouTube videos and mixes a different artist first", async () => {
@@ -337,3 +395,12 @@ describe("YouTubeSearchService", () => {
       .rejects.toThrow("YOUTUBE_VIDEO_UNAVAILABLE");
   });
 });
+
+function result(videoId: string, title: string, channelTitle: string) {
+  return {
+    videoId,
+    title,
+    channelTitle,
+    thumbnailUrl: `https://i.ytimg.com/${videoId}.jpg`,
+  };
+}

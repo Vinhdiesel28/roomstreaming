@@ -1466,6 +1466,7 @@ input[aria-invalid="true"] {
   grid-template-columns: auto minmax(0, 1fr) auto;
   align-items: center;
   gap: var(--space-xs);
+  flex: 0 0 auto;
   min-height: 4rem;
   padding: var(--space-sm);
   border: var(--rule-thin) solid var(--color-rule);

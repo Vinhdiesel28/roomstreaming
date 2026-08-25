@@ -36,11 +36,13 @@ describe("YouTube API client", () => {
       "dQw4w9WgXcQ",
       ["9bZkp7q19f0"],
       ["aaaaaaaaaaa"],
+      ["bbbbbbbbbbb"],
     );
 
     const url = String(fetchMock.mock.calls[0]?.[0]);
     expect(url).toContain("context=9bZkp7q19f0");
     expect(url).toContain("exclude=aaaaaaaaaaa");
+    expect(url).toContain("seen=bbbbbbbbbbb");
   });
 
   it("keeps a longer exclusion list so suggestions do not cycle back too soon", async () => {

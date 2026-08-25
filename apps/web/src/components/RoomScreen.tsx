@@ -185,24 +185,21 @@ export function RoomScreen({
   const [lastReadMessageCount, setLastReadMessageCount] = useState(messages.length);
   const chatEndRef = useRef<HTMLDivElement>(null);
   const chatInputRef = useRef<HTMLInputElement>(null);
+  const autoAdvanceBusyRef = useRef(false);
   const shownRecommendationIdsRef = useRef(new Set<string>());
   const wakeLockStatus = useScreenWakeLock(snapshot.currentVideo?.state === "playing");
   const unreadMessageCount = Math.max(0, messages.length - lastReadMessageCount);
+  const recommendationSeedVideoId = snapshot.currentVideo?.videoId ?? null;
   const recommendationContextVideoIds = [...new Set([
     ...(snapshot.recentVideoIds ?? []),
-    ...snapshot.queue.slice(-2).map((item) => item.videoId),
   ])]
-    .filter((videoId) => videoId !== snapshot.currentVideo?.videoId)
+    .filter((videoId) => videoId !== recommendationSeedVideoId)
     .slice(0, 4);
   const recommendationExcludedVideoIds = [...new Set([
-    snapshot.currentVideo?.videoId,
-    ...snapshot.queue.map((item) => item.videoId),
-    ...(snapshot.recentVideoIds ?? []),
     ...(snapshot.skippedVideoIds ?? []),
   ].filter((videoId): videoId is string => Boolean(videoId)))]
+    .filter((videoId) => videoId !== recommendationSeedVideoId)
     .slice(0, MAX_RECOMMENDATION_EXCLUSIONS);
-  const recommendationContextKey = recommendationContextVideoIds.join(",");
-  const recommendationExcludedKey = recommendationExcludedVideoIds.join(",");
 
   const saveProfile = async (nextProfile: BrowserProfile) => {
     const saved = saveBrowserProfile(nextProfile);
@@ -249,7 +246,7 @@ export function RoomScreen({
 
   useEffect(() => {
     let cancelled = false;
-    const videoId = snapshot.currentVideo?.videoId;
+    const videoId = recommendationSeedVideoId;
 
     setSimilarResults([]);
     setSimilarError(null);
@@ -265,17 +262,16 @@ export function RoomScreen({
 
     const loadSimilarVideos = async () => {
       try {
-        const previouslyShownVideoIds = [...shownRecommendationIdsRef.current]
-          .slice(-MAX_SEEN_RECOMMENDATIONS);
-        const excludedVideoIds = [...new Set([
-          ...recommendationExcludedVideoIds,
-          ...previouslyShownVideoIds,
-        ])].slice(0, MAX_RECOMMENDATION_EXCLUSIONS);
+        const seenVideoIds = [...new Set([
+          ...(snapshot.recentVideoIds ?? []),
+          ...shownRecommendationIdsRef.current,
+        ])].slice(-MAX_SEEN_RECOMMENDATIONS);
         const [items] = await Promise.all([
           getSimilarYouTubeVideos(
             videoId,
             recommendationContextVideoIds,
-            excludedVideoIds,
+            recommendationExcludedVideoIds,
+            seenVideoIds,
           ),
           new Promise((resolve) => window.setTimeout(resolve, 300)),
         ]);
@@ -302,7 +298,7 @@ export function RoomScreen({
     return () => {
       cancelled = true;
     };
-  }, [snapshot.currentVideo?.videoId, recommendationContextKey, recommendationExcludedKey]);
+  }, [recommendationSeedVideoId]);
 
   const addVideo = async (event: FormEvent) => {
     event.preventDefault();
@@ -448,6 +444,28 @@ export function RoomScreen({
   const visibleSimilarResults = similarResults.filter(
     (item) => item.videoId !== snapshot.currentVideo?.videoId && !queuedVideoIds.has(item.videoId),
   );
+
+  const handleVideoEnded = async () => {
+    if (!snapshot.isHost || autoAdvanceBusyRef.current) return;
+    autoAdvanceBusyRef.current = true;
+    setQueueError(null);
+    try {
+      if (snapshot.queue.length > 0) {
+        await onCommand("NEXT", 0);
+        return;
+      }
+      const nextRecommendation = visibleSimilarResults[0];
+      if (nextRecommendation) {
+        await onPlayVideoDirectly(nextRecommendation.videoId);
+        return;
+      }
+      await onCommand("NEXT", 0);
+    } catch (cause) {
+      setQueueError(cause instanceof Error ? cause.message : "Không tự phát được video tiếp theo.");
+    } finally {
+      autoAdvanceBusyRef.current = false;
+    }
+  };
 
   return (
     <main className="room-shell">
@@ -596,7 +614,12 @@ export function RoomScreen({
         </section>
 
         <section className="video-stage">
-          <YouTubePlayer playback={snapshot.currentVideo} isHost={snapshot.isHost} onCommand={onCommand} />
+          <YouTubePlayer
+            playback={snapshot.currentVideo}
+            isHost={snapshot.isHost}
+            onCommand={onCommand}
+            onEnded={handleVideoEnded}
+          />
         </section>
 
         <div className="video-meta">
@@ -751,18 +774,18 @@ export function RoomScreen({
             </div>
             <span className="count-badge">{visibleSimilarResults.length}</span>
           </div>
-          {!snapshot.currentVideo && (
+          {!recommendationSeedVideoId && (
             <p className="similar-status">Phát một video để bắt đầu tạo gu nhạc cho phòng.</p>
           )}
-          {snapshot.currentVideo && similarBusy && (
+          {recommendationSeedVideoId && similarBusy && (
             <p className="similar-status" role="status">
               <LoaderCircle className="spin" size={18} /> Đang tìm video phù hợp…
             </p>
           )}
-          {snapshot.currentVideo && similarError && (
+          {recommendationSeedVideoId && similarError && (
             <p className="field-helper is-error" role="alert">{similarError}</p>
           )}
-          {snapshot.currentVideo && !similarBusy && !similarError && visibleSimilarResults.length === 0 && (
+          {recommendationSeedVideoId && !similarBusy && !similarError && visibleSimilarResults.length === 0 && (
             <p className="similar-status">Các gợi ý đã nằm trong hàng chờ.</p>
           )}
           <ul className="search-results similar-results">
