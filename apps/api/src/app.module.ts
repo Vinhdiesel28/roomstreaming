@@ -7,6 +7,7 @@ import { RateLimiter } from "./room/rate-limiter";
 import { YouTubeSearchService } from "./youtube/youtube-search.service";
 import { VoiceRegistry } from "./voice/voice.registry";
 import { LastFmRecommendationService } from "./recommendation/lastfm-recommendation.service";
+import { InvidiousRecommendationService } from "./recommendation/invidious-recommendation.service";
 
 @Module({
   controllers: [AppController],
@@ -17,6 +18,7 @@ import { LastFmRecommendationService } from "./recommendation/lastfm-recommendat
     RateLimiter,
     YouTubeSearchService,
     LastFmRecommendationService,
+    InvidiousRecommendationService,
     VoiceRegistry,
   ],
 })

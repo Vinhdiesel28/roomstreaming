@@ -1,4 +1,5 @@
 import { Injectable } from "@nestjs/common";
+import { InvidiousRecommendationService } from "../recommendation/invidious-recommendation.service";
 import {
   LastFmRecommendationService,
   type SimilarTrack,
@@ -83,6 +84,7 @@ export class YouTubeSearchService {
 
   constructor(
     private readonly lastFm: LastFmRecommendationService = new LastFmRecommendationService(),
+    private readonly invidious: InvidiousRecommendationService = new InvidiousRecommendationService(),
   ) {}
 
   async search(input: string): Promise<YouTubeSearchResult[]> {
@@ -123,7 +125,7 @@ export class YouTubeSearchService {
     const seenVideoIds = new Set(
       validUniqueVideoIds(seenInput).slice(0, MAX_SEEN_RECOMMENDATIONS),
     );
-    const cacheKey = [videoId, ...contextVideoIds].join(":");
+    const cacheKey = [process.env.INVIDIOUS_API_URL?.trim() ?? "", videoId, ...contextVideoIds].join(":");
 
     const cached = this.similarCache.get(cacheKey);
     if (cached && cached.expiresAt > Date.now()) {
@@ -171,7 +173,10 @@ export class YouTubeSearchService {
       part: "snippet,status",
       id: [videoId, ...contextVideoIds].join(","),
     });
-    const videoPayload = await this.request<YouTubeVideoResponse>("videos", videoParams);
+    const [videoPayload, invidiousIds] = await Promise.all([
+      this.request<YouTubeVideoResponse>("videos", videoParams),
+      this.invidious.recommendedVideoIds(videoId).catch(() => [] as string[]),
+    ]);
     const sourceItem = videoPayload.items?.find((item) => item.id === videoId)
       ?? videoPayload.items?.[0];
     const source = sourceItem?.snippet;
@@ -189,10 +194,11 @@ export class YouTubeSearchService {
       .filter((identity) => identity.artist && identity.title)
       .slice(0, 5);
     const channelId = source.channelId;
-    const [sameChannel, similarGroups] = await Promise.all([
-      this.loadSameChannel(channelId, videoId),
+    const [invidiousCandidates, sameChannel, similarGroups] = await Promise.all([
+      this.loadVerifiedRecommendations(invidiousIds).catch(() => [] as YouTubeSearchResult[]),
+      this.loadSameChannel(channelId, videoId).catch(() => [] as YouTubeSearchResult[]),
       Promise.all(identities.map((identity) =>
-        this.lastFm.similarTracks(identity.artist, identity.title, 8))),
+        this.lastFm.similarTracks(identity.artist, identity.title, 8).catch(() => [] as SimilarTrack[]))),
     ]);
     const similarTracks = blendSimilarTrackGroups(similarGroups);
     const excluded = new Set([videoId, ...sameChannel.map((item) => item.videoId)]);
@@ -202,12 +208,36 @@ export class YouTubeSearchService {
     return this.cacheSimilar(
       cacheKey,
       diversifyRecommendations(
-        [...communityCandidates, ...sameChannel],
+        [...invidiousCandidates, ...communityCandidates, ...sameChannel],
         videoId,
         24,
         sourceArtist,
       ),
+      // Retry a failed/empty optional provider soon, not after the normal six-hour cache.
+      this.invidious.configured()
+        ? (invidiousCandidates.length ? 30 * 60 * 1000 : 60_000)
+        : SIMILAR_CACHE_TTL_MS,
     );
+  }
+
+  private async loadVerifiedRecommendations(ids: string[]): Promise<YouTubeSearchResult[]> {
+    if (ids.length === 0) return [];
+    const payload = await this.request<YouTubeVideoResponse>("videos", new URLSearchParams({
+      part: "snippet,status,contentDetails",
+      id: ids.join(","),
+    }));
+    const byId = new Map((payload.items ?? []).flatMap((raw) => {
+      const item = mapVideoItems([raw])[0];
+      const duration = parseDurationSeconds(raw.contentDetails?.duration);
+      return item && duration !== null && isRecommendationDuration(duration)
+        ? [[item.videoId, item] as const]
+        : [];
+    }));
+    // Preserve Invidious relevance order even if YouTube returns details in another order.
+    return ids.flatMap((id) => {
+      const item = byId.get(id);
+      return item ? [item] : [];
+    });
   }
 
   private async loadSameChannel(channelId: string, videoId: string) {
@@ -291,10 +321,10 @@ export class YouTubeSearchService {
     return rankCommunityCandidates(detailsPayload.items, tracks);
   }
 
-  private cacheSimilar(cacheKey: string, items: YouTubeSearchResult[]) {
+  private cacheSimilar(cacheKey: string, items: YouTubeSearchResult[], ttlMs = SIMILAR_CACHE_TTL_MS) {
     trimCache(this.similarCache);
     this.similarCache.set(cacheKey, {
-      expiresAt: Date.now() + SIMILAR_CACHE_TTL_MS,
+      expiresAt: Date.now() + (items.length ? ttlMs : 60_000),
       items,
     });
     return items;

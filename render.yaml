@@ -40,3 +40,5 @@ services:
         sync: false
       - key: LASTFM_API_KEY
         sync: false
+      - key: INVIDIOUS_API_URL
+        sync: false

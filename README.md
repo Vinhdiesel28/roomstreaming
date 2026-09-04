@@ -65,6 +65,21 @@ Nếu chưa đặt key hoặc hết quota tìm kiếm trong ngày, chức năng 
 
 Khi có key, backend tách ca sĩ và tên bài từ video đang phát cùng tối đa 5 bài gần đây, lấy các bài tương tự từ Last.fm, ánh xạ chúng sang video YouTube có thể nhúng rồi xếp hạng theo độ khớp, thời lượng và độ phổ biến. Các bản official/VEVO/Topic được ưu tiên; live, lyrics, cover và karaoke bị hạ điểm, còn nhiều phiên bản của cùng một bài được gộp lại. Video bị bỏ qua, bị xóa hoặc đã nằm trong hàng chờ sẽ không được đề xuất lại. Kết quả được cache 6 giờ. Nếu Last.fm lỗi hoặc chưa có key, danh sách cùng kênh vẫn hoạt động như trước. Không có tên người dùng, chat hay lịch sử phòng nào được gửi tới Last.fm.
 
+### Bật gợi ý từ Invidious (tùy chọn)
+
+1. Chuẩn bị một instance Invidious do bạn quản lý hoặc được phép dùng API. URL GitHub không phải instance; không tự động sử dụng server công cộng của người khác.
+2. Trên Render, vào **roomstreaming-api > Environment**, thêm `INVIDIOUS_API_URL` là URL gốc của instance, ví dụ `https://invidious.example.com` (đây là ví dụ, cần thay bằng server thật). Không thêm `/api/v1`, query string hoặc thông tin đăng nhập vào URL. Ưu tiên HTTPS.
+3. Giữ `YOUTUBE_API_KEY`: backend vẫn dùng YouTube để kiểm tra thông tin, thời lượng và quyền nhúng. `LASTFM_API_KEY` vẫn là nguồn bổ sung nếu có.
+4. Deploy lại **backend**. `/health` có `features.invidiousRecommendationsConfigured: true` khi đã nhập biến; cờ này chỉ xác nhận cấu hình, không xác nhận instance đang hoạt động.
+
+Backend gọi `/api/v1/videos/:id` và lấy `recommendedVideos` theo video nguồn mà frontend đang yêu cầu. Danh sách Invidious được ưu tiên trước nguồn Last.fm và video cùng kênh, sau đó đi qua bộ lọc gộp bản trùng, xen kẽ nghệ sĩ, bỏ ID đã nghe/bỏ qua hoặc đang chờ. Chỉ nhận ứng viên Invidious đã xác minh cho nhúng, có thời lượng từ 90 giây đến 20 phút. Player, hàng chờ và thời điểm frontend tải lại đề xuất không thay đổi.
+
+Request Invidious có timeout 3 giây, cache 30 phút và gộp các request đồng thời. Khi instance lỗi, backend tạm ngừng gọi 60 giây và dùng nguồn cũ; kết quả dự phòng chỉ cache 60 giây để có thể thử lại sớm. Để trống `INVIDIOUS_API_URL` sẽ tắt tích hợp. Backend chỉ gửi ID video nguồn cùng ngôn ngữ/vùng tới instance, không gửi tên người dùng, chat, mã phòng hay lịch sử nghe.
+
+Bạn có thể tự kiểm tra bằng cách chọn một video, xem danh sách gợi ý rồi thêm một bài vào hàng chờ để kiểm tra lọc trùng. Thử tạm đặt URL instance không hoạt động và restart backend: phòng/player vẫn hoạt động, gợi ý dùng nguồn cũ và log xuất hiện cảnh báo `Invidious unavailable`. Khôi phục URL sau khi thử. Không proxy luồng video qua Invidious.
+
+API tham khảo: https://docs.invidious.io/api/#get-apiv1videosid
+
 ### Voice chat local
 
 1. Mở cùng một phòng bằng hai trình duyệt hoặc hai thiết bị.

@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { LastFmRecommendationService } from "../recommendation/lastfm-recommendation.service";
+import type { InvidiousRecommendationService } from "../recommendation/invidious-recommendation.service";
 import {
   diversifyRecommendations,
   extractTrackIdentity,
@@ -9,9 +10,11 @@ import {
 describe("YouTubeSearchService", () => {
   const originalKey = process.env.YOUTUBE_API_KEY;
   const originalLastFmKey = process.env.LASTFM_API_KEY;
+  const originalInvidiousUrl = process.env.INVIDIOUS_API_URL;
 
   beforeEach(() => {
     delete process.env.LASTFM_API_KEY;
+    delete process.env.INVIDIOUS_API_URL;
   });
 
   afterEach(() => {
@@ -20,6 +23,8 @@ describe("YouTubeSearchService", () => {
     else process.env.YOUTUBE_API_KEY = originalKey;
     if (originalLastFmKey === undefined) delete process.env.LASTFM_API_KEY;
     else process.env.LASTFM_API_KEY = originalLastFmKey;
+    if (originalInvidiousUrl === undefined) delete process.env.INVIDIOUS_API_URL;
+    else process.env.INVIDIOUS_API_URL = originalInvidiousUrl;
   });
 
   it("extracts artist and track names from common YouTube music titles", () => {
@@ -342,6 +347,82 @@ describe("YouTubeSearchService", () => {
     expect(String(fetchMock.mock.calls[0]?.[0])).toContain("dQw4w9WgXcQ%2C9bZkp7q19f0");
     expect(String(fetchMock.mock.calls[4]?.[0])).toContain("videoCategoryId=10");
     expect(String(fetchMock.mock.calls[5]?.[0])).toContain("contentDetails%2Cstatistics");
+  });
+
+  it("verifies Invidious candidates and keeps exclusions while other sources fail", async () => {
+    process.env.YOUTUBE_API_KEY = "test-key";
+    const invidious = {
+      configured: () => true,
+      recommendedVideoIds: vi.fn(async () => [
+        "aaaaaaaaaaa", "bbbbbbbbbbb", "ccccccccccc", "ddddddddddd",
+      ]),
+    } as unknown as InvidiousRecommendationService;
+    const lastFm = {
+      similarTracks: vi.fn().mockRejectedValue(new Error("unavailable")),
+    } as unknown as LastFmRecommendationService;
+    vi.stubGlobal("fetch", vi.fn(async (input: string) => {
+      const url = new URL(input);
+      if (url.pathname.endsWith("/channels")) throw new Error("channel unavailable");
+      if (url.searchParams.get("id") === "source00000") {
+        return { ok: true, json: async () => ({ items: [{
+          id: "source00000",
+          snippet: { title: "Source - Song", channelTitle: "Source", channelId: "channel" },
+        }] }) };
+      }
+      return { ok: true, json: async () => ({ items: [
+        { id: "bbbbbbbbbbb", title: "Artist B - Song B", duration: "PT4M", embeddable: true },
+        { id: "aaaaaaaaaaa", title: "Artist A - Song A", duration: "PT3M", embeddable: true },
+        { id: "ccccccccccc", title: "Short - Clip", duration: "PT30S", embeddable: true },
+        { id: "ddddddddddd", title: "Blocked - Song", duration: "PT3M", embeddable: false },
+      ].map((item) => ({
+        id: item.id,
+        snippet: { title: item.title, channelTitle: item.title.split(" - ")[0],
+          thumbnails: { medium: { url: `https://i.ytimg.com/vi/${item.id}/mqdefault.jpg` } } },
+        contentDetails: { duration: item.duration },
+        status: { embeddable: item.embeddable, privacyStatus: "public" },
+      })) }) };
+    }));
+    const service = new YouTubeSearchService(lastFm, invidious);
+    const results = await service.similar("source00000");
+    expect(results.map((item) => item.videoId)).toEqual(["aaaaaaaaaaa", "bbbbbbbbbbb"]);
+    expect((await service.similar("source00000", [], ["aaaaaaaaaaa"]))
+      .map((item) => item.videoId)).toEqual(["bbbbbbbbbbb"]);
+    expect((await service.similar("source00000", [], [], ["aaaaaaaaaaa"]))
+      .map((item) => item.videoId)).toEqual(["bbbbbbbbbbb"]);
+    expect(invidious.recommendedVideoIds).toHaveBeenCalledTimes(1);
+  });
+
+  it("uses channel fallback after Invidious fails and retries after a short cache", async () => {
+    const invidious = {
+      configured: () => true,
+      recommendedVideoIds: vi.fn().mockRejectedValue(new Error("timeout")),
+    } as unknown as InvidiousRecommendationService;
+    const service = new YouTubeSearchService(undefined, invidious);
+    // Stub internal YouTube transport only; exercise the actual recommendation/cache flow.
+    const request = vi.spyOn(service as unknown as { request: (...args: unknown[]) => Promise<unknown> }, "request")
+      .mockImplementation(async (resource, params) => {
+        if (resource === "channels") return { items: [{ contentDetails: { relatedPlaylists: { uploads: "uploads" } } }] };
+        if (resource === "playlistItems") return { items: [{ contentDetails: { videoId: "aaaaaaaaaaa" } }] };
+        if ((params as URLSearchParams).get("id") === "source00000") return { items: [{
+          id: "source00000", snippet: { title: "Source - Song", channelTitle: "Source", channelId: "channel" },
+        }] };
+        return { items: [{ id: "aaaaaaaaaaa",
+          snippet: { title: "Another song", channelTitle: "Source", thumbnails: { medium: { url: "https://i.ytimg.com/a.jpg" } } },
+          status: { embeddable: true, privacyStatus: "public" }, contentDetails: { duration: "PT3M" },
+        }] };
+      });
+    const now = vi.spyOn(Date, "now").mockReturnValue(100_000);
+    try {
+      expect((await service.similar("source00000")).map((item) => item.videoId)).toEqual(["aaaaaaaaaaa"]);
+      await service.similar("source00000");
+      expect(invidious.recommendedVideoIds).toHaveBeenCalledTimes(1);
+      now.mockReturnValue(160_001);
+      await service.similar("source00000");
+      expect(invidious.recommendedVideoIds).toHaveBeenCalledTimes(2);
+    } finally {
+      now.mockRestore();
+      request.mockRestore();
+    }
   });
 
   it("validates pasted videos before they enter the queue and caches valid IDs", async () => {

@@ -41,6 +41,7 @@ export class AppController {
         roomRecovery: true,
         youtubeSimilar: true,
         musicRecommendations: Boolean(process.env.LASTFM_API_KEY?.trim()),
+        invidiousRecommendationsConfigured: Boolean(process.env.INVIDIOUS_API_URL?.trim()),
       },
       revision: process.env.RENDER_GIT_COMMIT?.slice(0, 7) ?? "local",
       now: Date.now(),
