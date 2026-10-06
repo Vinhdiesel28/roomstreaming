@@ -23,9 +23,29 @@ const MAX_CACHE_ENTRIES = 200;
 export class LastFmRecommendationService {
   private readonly cache = new Map<string, { expiresAt: number; tracks: SimilarTrack[] }>();
   private readonly pending = new Map<string, Promise<SimilarTrack[]>>();
+  private lastSuccessAt: number | null = null;
+  private lastFailureAt: number | null = null;
+  private lastError: string | null = null;
 
   configured() {
     return Boolean(process.env.LASTFM_API_KEY?.trim());
+  }
+
+  health() {
+    const configured = this.configured();
+    return {
+      configured,
+      state: !configured
+        ? "disabled"
+        : this.lastSuccessAt !== null && (this.lastFailureAt === null || this.lastSuccessAt >= this.lastFailureAt)
+          ? "ok"
+          : this.lastFailureAt !== null
+            ? "degraded"
+            : "idle",
+      lastSuccessAt: this.lastSuccessAt,
+      lastFailureAt: this.lastFailureAt,
+      lastError: this.lastError,
+    };
   }
 
   async similarTracks(artistInput: string, titleInput: string, limit = 10) {
@@ -41,7 +61,16 @@ export class LastFmRecommendationService {
     if (existing) return (await existing).slice(0, limit);
 
     const request = this.load(apiKey, artist, title)
-      .catch(() => [])
+      .then((tracks) => {
+        this.lastSuccessAt = Date.now();
+        this.lastError = null;
+        return tracks;
+      })
+      .catch((error: unknown) => {
+        this.lastFailureAt = Date.now();
+        this.lastError = error instanceof Error ? error.message.slice(0, 80) : "LASTFM_UNAVAILABLE";
+        return [];
+      })
       .then((tracks) => {
         trimCache(this.cache);
         this.cache.set(key, { expiresAt: Date.now() + CACHE_TTL_MS, tracks });
@@ -67,7 +96,7 @@ export class LastFmRecommendationService {
     const response = await fetch(`https://ws.audioscrobbler.com/2.0/?${params}`, {
       signal: AbortSignal.timeout(8_000),
     });
-    if (!response.ok) return [];
+    if (!response.ok) throw new Error(`LASTFM_HTTP_${response.status}`);
     const payload = (await response.json().catch(() => ({}))) as LastFmSimilarResponse;
     const seen = new Set<string>();
     return (payload.similartracks?.track ?? []).flatMap<SimilarTrack>((item) => {

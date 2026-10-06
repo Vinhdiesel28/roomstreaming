@@ -14,6 +14,8 @@ import { SessionService } from "./session/session.service";
 import { RoomStore } from "./room/room.store";
 import { RateLimiter } from "./room/rate-limiter";
 import { YouTubeSearchService } from "./youtube/youtube-search.service";
+import { InvidiousRecommendationService } from "./recommendation/invidious-recommendation.service";
+import { LastFmRecommendationService } from "./recommendation/lastfm-recommendation.service";
 
 const MAX_RECOMMENDATION_EXCLUSIONS = 100;
 const MAX_SEEN_RECOMMENDATIONS = 60;
@@ -29,6 +31,10 @@ export class AppController {
     private readonly limiter: RateLimiter,
     @Inject(YouTubeSearchService)
     private readonly youtubeSearch: YouTubeSearchService,
+    @Inject(InvidiousRecommendationService)
+    private readonly invidious: InvidiousRecommendationService,
+    @Inject(LastFmRecommendationService)
+    private readonly lastFm: LastFmRecommendationService,
   ) {}
 
   @Get("health")
@@ -40,8 +46,12 @@ export class AppController {
         profiles: true,
         roomRecovery: true,
         youtubeSimilar: true,
-        musicRecommendations: Boolean(process.env.LASTFM_API_KEY?.trim()),
-        invidiousRecommendationsConfigured: Boolean(process.env.INVIDIOUS_API_URL?.trim()),
+        musicRecommendations: this.lastFm.configured(),
+        invidiousRecommendationsConfigured: this.invidious.configured(),
+      },
+      recommendationProviders: {
+        invidious: this.invidious.health(),
+        lastFm: this.lastFm.health(),
       },
       revision: process.env.RENDER_GIT_COMMIT?.slice(0, 7) ?? "local",
       now: Date.now(),

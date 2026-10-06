@@ -68,9 +68,9 @@ Khi có key, backend tách ca sĩ và tên bài từ video đang phát cùng t�
 ### Bật gợi ý từ Invidious (tùy chọn)
 
 1. Chuẩn bị một instance Invidious do bạn quản lý hoặc được phép dùng API. URL GitHub không phải instance; không tự động sử dụng server công cộng của người khác.
-2. Trên Render, vào **roomstreaming-api > Environment**, thêm `INVIDIOUS_API_URL` là URL gốc của instance, ví dụ `https://invidious.example.com` (đây là ví dụ, cần thay bằng server thật). Không thêm `/api/v1`, query string hoặc thông tin đăng nhập vào URL. Ưu tiên HTTPS.
+2. Trên Render, vào **roomstreaming-api > Environment**, thêm `INVIDIOUS_API_URL` là URL gốc của instance. Có thể nhập tối đa 3 URL, ngăn cách bằng dấu phẩy, để backend tự chuyển nguồn khi một instance lỗi. Ví dụ: `https://invidious.f5.si,https://invidious.example.com`. Không thêm `/api/v1`, query string hoặc thông tin đăng nhập vào URL. Ưu tiên HTTPS.
 3. Giữ `YOUTUBE_API_KEY`: backend vẫn dùng YouTube để kiểm tra thông tin, thời lượng và quyền nhúng. `LASTFM_API_KEY` vẫn là nguồn bổ sung nếu có.
-4. Deploy lại **backend**. `/health` có `features.invidiousRecommendationsConfigured: true` khi đã nhập biến; cờ này chỉ xác nhận cấu hình, không xác nhận instance đang hoạt động.
+4. Deploy lại **backend**. `/health` có `recommendationProviders.invidious.state`: `idle` trước lần gọi đầu tiên, `ok` khi đã lấy được đề xuất và `degraded` khi instance lỗi hoặc quá thời gian chờ. Trường `lastError` cho biết lỗi gần nhất mà không làm lộ khóa bí mật.
 
 Backend gọi `/api/v1/videos/:id` và lấy `recommendedVideos` theo video nguồn mà frontend đang yêu cầu. Danh sách Invidious được ưu tiên trước nguồn Last.fm và video cùng kênh, sau đó đi qua bộ lọc gộp bản trùng, xen kẽ nghệ sĩ, bỏ ID đã nghe/bỏ qua hoặc đang chờ. Chỉ nhận ứng viên Invidious đã xác minh cho nhúng, có thời lượng từ 90 giây đến 20 phút. Player, hàng chờ và thời điểm frontend tải lại đề xuất không thay đổi.
 

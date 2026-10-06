@@ -1,4 +1,4 @@
-import { Injectable } from "@nestjs/common";
+import { Injectable, Logger } from "@nestjs/common";
 import { InvidiousRecommendationService } from "../recommendation/invidious-recommendation.service";
 import {
   LastFmRecommendationService,
@@ -68,6 +68,7 @@ const MAX_RECOMMENDATION_DURATION_SEC = 20 * 60;
 
 @Injectable()
 export class YouTubeSearchService {
+  private readonly logger = new Logger(YouTubeSearchService.name);
   private readonly cache = new Map<
     string,
     { expiresAt: number; items: YouTubeSearchResult[] }
@@ -205,10 +206,14 @@ export class YouTubeSearchService {
     const communityCandidates = similarTracks.length > 0
       ? await this.loadCommunityCandidates(similarTracks, excluded).catch(() => [])
       : [];
+    this.logger.log(
+      `Recommendation sources for ${videoId}: invidious=${invidiousCandidates.length}, `
+      + `lastfm=${communityCandidates.length}, sameChannel=${sameChannel.length}`,
+    );
     return this.cacheSimilar(
       cacheKey,
       diversifyRecommendations(
-        [...invidiousCandidates, ...communityCandidates, ...sameChannel],
+        [...invidiousCandidates, ...communityCandidates, ...sameChannel.slice(0, 2)],
         videoId,
         24,
         sourceArtist,
@@ -494,22 +499,24 @@ export function diversifyRecommendations(
     return 0;
   });
   const selected: YouTubeSearchResult[] = [];
-  for (let round = 0; round < 3 && selected.length < limit; round += 1) {
+  const artistCounts = new Map<string, number>();
+  const channelCounts = new Map<string, number>();
+  let madeProgress = true;
+  while (madeProgress && selected.length < limit) {
+    madeProgress = false;
     for (const artist of artistOrder) {
       const bucket = artistBuckets.get(artist);
       if (!bucket) continue;
-      const item = bucket.shift();
-      if (item) selected.push(item);
-      if (selected.length === limit) break;
-    }
-  }
-
-  if (selected.length < limit) {
-    const selectedIds = new Set(selected.map((item) => item.videoId));
-    for (const item of canonical) {
-      if (item.videoId === excludedVideoId || selectedIds.has(item.videoId)) continue;
-      selected.push(item);
-      selectedIds.add(item.videoId);
+      while (bucket.length > 0) {
+        const item = bucket.shift()!;
+        const channel = normalizeText(cleanChannelTitle(item.channelTitle)) || item.videoId;
+        if ((artistCounts.get(artist) ?? 0) >= 2 || (channelCounts.get(channel) ?? 0) >= 2) continue;
+        selected.push(item);
+        artistCounts.set(artist, (artistCounts.get(artist) ?? 0) + 1);
+        channelCounts.set(channel, (channelCounts.get(channel) ?? 0) + 1);
+        madeProgress = true;
+        break;
+      }
       if (selected.length === limit) break;
     }
   }

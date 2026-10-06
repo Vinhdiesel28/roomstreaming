@@ -79,4 +79,26 @@ describe("InvidiousRecommendationService", () => {
     expect(await new InvidiousRecommendationService().recommendedVideoIds("source00000"))
       .toHaveLength(40);
   });
+
+  it("tries the next configured instance and reports actual provider health", async () => {
+    vi.stubEnv(
+      "INVIDIOUS_API_URL",
+      "https://blocked.example, https://working.example/, https://working.example",
+    );
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce({ ok: false, status: 403, json: async () => ({}) })
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: async () => ({ recommendedVideos: [{ videoId: "aaaaaaaaaaa" }] }),
+      });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const service = new InvidiousRecommendationService();
+    expect(service.health()).toMatchObject({ configured: true, state: "idle" });
+    expect(await service.recommendedVideoIds("source00000")).toEqual(["aaaaaaaaaaa"]);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(String(fetchMock.mock.calls[1]?.[0])).toContain("working.example/api/v1/videos/source00000");
+    expect(service.health()).toMatchObject({ configured: true, state: "ok", lastError: null });
+  });
 });

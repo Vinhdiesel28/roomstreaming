@@ -51,17 +51,17 @@ describe("YouTubeSearchService", () => {
     const artists = diversified.map((item) => extractTrackIdentity(item.title, item.channelTitle).artist);
 
     expect(artists.slice(0, 4)).toEqual(["Ca sĩ B", "Ca sĩ C", "Ca sĩ D", "Ca sĩ A"]);
-    expect(artists.filter((artist) => artist === "Ca sĩ A")).toHaveLength(3);
+    expect(artists.filter((artist) => artist === "Ca sĩ A")).toHaveLength(2);
   });
 
-  it("fills the batch from the remaining pool when only one artist is available", () => {
+  it("does not fill the batch with one artist when no diverse results are available", () => {
     const items = Array.from({ length: 8 }, (_, index) => result(
       `${index}`.padStart(11, "z"),
       `Ca sĩ A - Bài ${index + 1}`,
       "Ca sĩ A Official",
     ));
 
-    expect(diversifyRecommendations(items, "source00000", 8, "Ca sĩ A")).toHaveLength(8);
+    expect(diversifyRecommendations(items, "source00000", 8, "Ca sĩ A")).toHaveLength(2);
   });
 
   it("requires a server-side API key", async () => {
