@@ -48,4 +48,33 @@ describe("LastFmRecommendationService", () => {
     expect(fetchMock).toHaveBeenCalledTimes(1);
     expect(String(fetchMock.mock.calls[0]?.[0])).toContain("method=track.getsimilar");
   });
+
+  it("discovers top tracks from similar artists when track-level data is sparse", async () => {
+    process.env.LASTFM_API_KEY = "lastfm-key";
+    const fetchMock = vi.fn().mockImplementation(async (input: string) => {
+      const url = new URL(input);
+      if (url.searchParams.get("method") === "artist.getsimilar") {
+        return { ok: true, status: 200, json: async () => ({ similarartists: { artist: [
+          { name: "Cá Hồi Hoang", match: "0.8" },
+          { name: "Thịnh Suy", match: "0.6" },
+        ] } }) };
+      }
+      const artist = url.searchParams.get("artist");
+      return { ok: true, status: 200, json: async () => ({ toptracks: { track: [
+        { name: `${artist} bài 1` }, { name: `${artist} bài 2` }, { name: `${artist} bài 3` },
+      ] } }) };
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const service = new LastFmRecommendationService();
+    const tracks = await service.artistDiscoveryTracks("Ngọt", 10);
+    expect(tracks.map((track) => `${track.artist} - ${track.title}`)).toEqual([
+      "Cá Hồi Hoang - Cá Hồi Hoang bài 1",
+      "Cá Hồi Hoang - Cá Hồi Hoang bài 2",
+      "Thịnh Suy - Thịnh Suy bài 1",
+      "Thịnh Suy - Thịnh Suy bài 2",
+    ]);
+    expect(await service.artistDiscoveryTracks("Ngọt", 10)).toEqual(tracks);
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+  });
 });

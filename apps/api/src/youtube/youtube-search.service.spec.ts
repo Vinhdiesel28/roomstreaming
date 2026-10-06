@@ -238,6 +238,7 @@ describe("YouTubeSearchService", () => {
       similarTracks: vi.fn(async () => [
         { artist: "Nghệ sĩ khác", title: "Bài khác", match: 0.91 },
       ]),
+      artistDiscoveryTracks: vi.fn(async () => []),
     } as unknown as LastFmRecommendationService;
     const fetchMock = vi.fn()
       .mockResolvedValueOnce({
@@ -359,6 +360,7 @@ describe("YouTubeSearchService", () => {
     } as unknown as InvidiousRecommendationService;
     const lastFm = {
       similarTracks: vi.fn().mockRejectedValue(new Error("unavailable")),
+      artistDiscoveryTracks: vi.fn(async () => []),
     } as unknown as LastFmRecommendationService;
     vi.stubGlobal("fetch", vi.fn(async (input: string) => {
       const url = new URL(input);

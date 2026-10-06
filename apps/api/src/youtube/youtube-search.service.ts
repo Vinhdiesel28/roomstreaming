@@ -195,13 +195,18 @@ export class YouTubeSearchService {
       .filter((identity) => identity.artist && identity.title)
       .slice(0, 5);
     const channelId = source.channelId;
-    const [invidiousCandidates, sameChannel, similarGroups] = await Promise.all([
+    const [invidiousCandidates, sameChannel, similarGroups, artistDiscoveryTracks] = await Promise.all([
       this.loadVerifiedRecommendations(invidiousIds).catch(() => [] as YouTubeSearchResult[]),
       this.loadSameChannel(channelId, videoId).catch(() => [] as YouTubeSearchResult[]),
       Promise.all(identities.map((identity) =>
         this.lastFm.similarTracks(identity.artist, identity.title, 8).catch(() => [] as SimilarTrack[]))),
+      this.lastFm.artistDiscoveryTracks(sourceArtist, 10).catch(() => [] as SimilarTrack[]),
     ]);
-    const similarTracks = blendSimilarTrackGroups(similarGroups);
+    const similarTracks = blendSimilarTrackGroups([
+      similarGroups[0] ?? [],
+      artistDiscoveryTracks,
+      ...similarGroups.slice(1),
+    ]);
     const excluded = new Set([videoId, ...sameChannel.map((item) => item.videoId)]);
     const communityCandidates = similarTracks.length > 0
       ? await this.loadCommunityCandidates(similarTracks, excluded).catch(() => [])
